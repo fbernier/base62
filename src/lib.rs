@@ -7,16 +7,16 @@ pub mod base62 {
         'v', 'w', 'x', 'y', 'z'];
 
     pub fn encode(mut num: u64) -> String {
-        if num == 0 { return "0".to_string() }
+        if num == 0 { return "0".to_owned() }
         let mut result  = String::new();
 
         while num > 0 {
-            let char_holder = ALPHABET[(num % BASE) as usize].to_string();
-            result = char_holder + &result;
+            let char_holder = ALPHABET[(num % BASE) as usize];
+            &result.push(char_holder);
             num /= BASE
         }
 
-        return result.to_string();
+        return result.chars().rev().collect();
     }
 
     pub fn decode(string: &str) -> u64 {
