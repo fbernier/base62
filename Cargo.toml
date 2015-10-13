@@ -1,0 +1,11 @@
+[package]
+name = "base62"
+version = "0.1.0"
+authors = ["Francois Bernier <frankbernier@gmail.com>"]
+description = "A Base62 encoding/decoding library"
+documentation = "https://github.com/fbernier/base62"
+homepage = "https://github.com/fbernier/base62"
+repository = "https://github.com/fbernier/base62"
+readme = "README.md"
+keywords = ["base62", "encoding", "decoding", "url", "shortener"]
+license = "MIT"
