@@ -1,6 +1,6 @@
 [package]
 name = "base62"
-version = "0.1.0"
+version = "0.2.0"
 authors = ["Francois Bernier <frankbernier@gmail.com>"]
 description = "A Base62 encoding/decoding library"
 documentation = "https://github.com/fbernier/base62"
