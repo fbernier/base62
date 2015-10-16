@@ -60,16 +60,16 @@ mod tests {
 
     #[test]
     fn test_encode() {
-        assert_eq!(base62::encode(1337), "LZ");
+        assert_eq!(base62::encode(852751187393), "F0ob4rZ");
     }
 
     #[test]
     fn test_decode() {
-        assert_eq!(base62::decode("LZ").unwrap(), 1337);
+        assert_eq!(base62::decode("F0ob4rZ").unwrap(), 852751187393);
     }
 
     #[test]
     fn test_decode_invalid_char() {
-        assert!(base62::decode("{").is_err());
+        assert!(base62::decode("ds{Z455f").is_err());
     }
 }
