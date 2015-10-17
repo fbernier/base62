@@ -21,13 +21,18 @@ pub fn encode(mut num: u64) -> String {
     String::from_utf8(bytes).unwrap()
 }
 
-pub enum DecodeError { InvalidBase62Byte(char, usize) }
+pub enum DecodeError {
+    InvalidBase62Byte(char, usize),
+    ArithmeticOverflow
+}
 
 impl fmt::Debug for DecodeError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match *self {
             InvalidBase62Byte(ch, idx) =>
-                write!(f, "Invalid character '{}' at position {}", ch, idx)
+                write!(f, "Invalid character '{}' at position {}", ch, idx),
+            ArithmeticOverflow =>
+                write!(f, "Decode result is too large"),
         }
     }
 }
@@ -44,7 +49,12 @@ pub fn decode(string: &str) -> Result<u64, DecodeError> {
     for (i, c) in string.as_bytes().iter().rev().enumerate() {
         let num = BASE.pow(i as u32);
         match ALPHABET.binary_search(&c) {
-            Ok(v) => { result += v as u64 * num },
+            Ok(v) => {
+                match (v as u64).checked_mul(num) {
+                    Some(z) => result += z,
+                    None => return Err(ArithmeticOverflow)
+                }
+            }
             Err(_e) => {
                 return Err(InvalidBase62Byte(c.to_owned() as char, string.len() - i))
             }
@@ -71,5 +81,11 @@ mod tests {
     #[test]
     fn test_decode_invalid_char() {
         assert!(base62::decode("ds{Z455f").is_err());
+    }
+
+
+    #[test]
+    fn test_decode_long_string() {
+        assert!(base62::decode("dsZ455fzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz").is_err());
     }
 }
