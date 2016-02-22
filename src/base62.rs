@@ -33,8 +33,9 @@ pub enum DecodeError {
 impl fmt::Debug for DecodeError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match *self {
-            InvalidBase62Byte(ch, idx) =>
-                write!(f, "Invalid character '{}' at position {}", ch, idx),
+            InvalidBase62Byte(ch, idx) => {
+                write!(f, "Invalid character '{}' at position {}", ch, idx)
+            }
             ArithmeticOverflow => write!(f, "Decode result is too large"),
         }
     }
