@@ -51,7 +51,7 @@ pub fn decode(string: &str) -> Result<u64, DecodeError> {
     let mut result = 0;
 
     for (i, c) in string.as_bytes().iter().rev().enumerate() {
-        let num = BASE.pow(i as u32);
+        let num = BASE.checked_pow(i as u32).ok_or(ArithmeticOverflow)?;
         match ALPHABET.binary_search(c) {
             Ok(v) => {
                 match (v as u64).checked_mul(num) {
