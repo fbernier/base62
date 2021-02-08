@@ -2,6 +2,7 @@
 name = "base62"
 version = "0.3.0"
 authors = ["Francois Bernier <frankbernier@gmail.com>"]
+edition = "2018"
 description = "A Base62 encoding/decoding library"
 documentation = "https://github.com/fbernier/base62"
 homepage = "https://github.com/fbernier/base62"
