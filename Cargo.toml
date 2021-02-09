@@ -1,6 +1,6 @@
 [package]
 name = "base62"
-version = "0.3.0"
+version = "1.0.0"
 authors = ["Francois Bernier <frankbernier@gmail.com>"]
 edition = "2018"
 description = "A Base62 encoding/decoding library"
@@ -10,6 +10,9 @@ repository = "https://github.com/fbernier/base62"
 readme = "README.md"
 keywords = ["base62", "encoding", "decoding", "url", "shortener"]
 license = "MIT"
+exclude = [
+    ".github/*",
+]
 
 [dev-dependencies]
 quickcheck = "1"
