@@ -10,3 +10,6 @@ repository = "https://github.com/fbernier/base62"
 readme = "README.md"
 keywords = ["base62", "encoding", "decoding", "url", "shortener"]
 license = "MIT"
+
+[dev-dependencies]
+quickcheck = "1"
