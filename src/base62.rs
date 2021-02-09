@@ -32,6 +32,19 @@ impl fmt::Display for DecodeError {
     }
 }
 
+///Encode any uint as base64.
+///Returns a String.
+///
+///# Example
+///
+///```rust
+///extern crate base62;
+///
+///fn main() {
+///    let b62 = base62::encode(1337u32);
+///    println!("{}", b62);
+///}
+///```
 #[must_use]
 pub fn encode<T: Into<u128>>(num: T) -> String {
     let mut num = num.into();
@@ -54,6 +67,19 @@ pub fn encode<T: Into<u128>>(num: T) -> String {
     String::from_utf8(bytes[MAX_DECODE_LEN - i..MAX_DECODE_LEN].to_vec()).unwrap()
 }
 
+///Decode from string reference as octets.
+///Returns a Result containing a u128 which can be downcasted to any other uint.
+///
+///# Example
+///
+///```rust
+///extern crate base62;
+///
+///fn main() {
+///    let bytes = base62::decode("rustlang").unwrap();
+///    println!("{:?}", bytes);
+///}
+///```
 pub fn decode<T: AsRef<[u8]>>(input: T) -> Result<u128, DecodeError> {
     let mut result = 0;
     let input = input.as_ref();
