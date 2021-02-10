@@ -2,7 +2,7 @@ pub use self::DecodeError::*;
 use std::fmt;
 
 const BASE: u128 = 62;
-const MAX_DECODE_LEN: usize = 111;
+const MAX_DECODED_LEN: usize = 111;
 const ALPHABET: [u8; BASE as usize] = [
     b'0', b'1', b'2', b'3', b'4', b'5', b'6', b'7', b'8', b'9', b'A', b'B', b'C', b'D', b'E', b'F',
     b'G', b'H', b'I', b'J', b'K', b'L', b'M', b'N', b'O', b'P', b'Q', b'R', b'S', b'T', b'U', b'V',
@@ -51,20 +51,20 @@ pub fn encode<T: Into<u128>>(num: T) -> String {
     if num == 0 {
         return "0".to_owned();
     }
-    let mut bytes: [u8; MAX_DECODE_LEN] = [0; MAX_DECODE_LEN];
+    let mut bytes: [u8; MAX_DECODED_LEN] = [0; MAX_DECODED_LEN];
 
-    let mut i: usize = 0;
+    let mut i: usize = MAX_DECODED_LEN;
     loop {
         if num == 0 {
             break;
         }
-        i += 1;
+        i -= 1;
 
-        bytes[MAX_DECODE_LEN - i] = ALPHABET[(num % BASE) as usize];
+        bytes[i] = ALPHABET[(num % BASE) as usize];
         num /= BASE;
     }
 
-    String::from_utf8(bytes[MAX_DECODE_LEN - i..MAX_DECODE_LEN].to_vec()).unwrap()
+    String::from_utf8(bytes[i..MAX_DECODED_LEN].to_vec()).unwrap()
 }
 
 ///Decode from string reference as octets.
