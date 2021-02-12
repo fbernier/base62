@@ -103,14 +103,14 @@ pub fn encode_buf<T: Into<u128>>(num: T, buf: &mut String) {
 ///}
 ///```
 pub fn decode<T: AsRef<[u8]>>(input: T) -> Result<u128, DecodeError> {
-    let mut result = 0;
+    let mut result = 0u128;
     let input = input.as_ref();
 
     for (i, c) in input.iter().rev().enumerate() {
         let num = BASE.checked_pow(i as u32).ok_or(ArithmeticOverflow)?;
         match ALPHABET.binary_search(&c) {
             Ok(v) => match (v as u128).checked_mul(num) {
-                Some(z) => result += z,
+                Some(z) => result = result.checked_add(z as u128).ok_or(ArithmeticOverflow)?,
                 None => return Err(ArithmeticOverflow),
             },
             Err(_e) => {
