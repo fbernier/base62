@@ -10,6 +10,7 @@ const ALPHABET: [u8; BASE as usize] = [
     b'm', b'n', b'o', b'p', b'q', b'r', b's', b't', b'u', b'v', b'w', b'x', b'y', b'z',
 ];
 
+#[derive(PartialEq)]
 pub enum DecodeError {
     InvalidBase62Byte(char, usize),
     ArithmeticOverflow,
@@ -103,6 +104,7 @@ pub fn decode<T: AsRef<[u8]>>(input: T) -> Result<u128, DecodeError> {
 #[cfg(test)]
 mod tests {
     use crate::base62;
+    use crate::base62::DecodeError;
     use quickcheck::TestResult;
 
     quickcheck! {
@@ -146,11 +148,17 @@ mod tests {
 
     #[test]
     fn test_decode_invalid_char() {
-        assert!(base62::decode("ds{Z455f").is_err());
+        assert_eq!(
+            base62::decode("ds{Z455f"),
+            Err(DecodeError::InvalidBase62Byte('{', 3))
+        );
     }
 
     #[test]
     fn test_decode_long_string() {
-        assert!(base62::decode("7n42DGM5Tflk9n8mt7Fhc7B").is_err());
+        assert_eq!(
+            base62::decode("7n42DGM5Tflk9n8mt7Fhc7B"),
+            Err(DecodeError::ArithmeticOverflow)
+        );
     }
 }
