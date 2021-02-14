@@ -71,7 +71,7 @@ pub fn encode_buf<T: Into<u128>>(num: T, buf: &mut String) {
     let mut num = num.into();
     if num == 0 {
         *buf = "0".to_owned();
-        return
+        return;
     }
     let mut bytes: [u8; MAX_DECODED_LEN] = [0; MAX_DECODED_LEN];
 
