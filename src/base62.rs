@@ -48,9 +48,30 @@ impl fmt::Display for DecodeError {
 ///```
 #[must_use]
 pub fn encode<T: Into<u128>>(num: T) -> String {
+    let mut buf = String::with_capacity(MAX_DECODED_LEN);
+    encode_buf(num, &mut buf);
+    buf
+}
+
+///Encode any uint as base64.
+///Writes into the supplied output buffer, which will grow the buffer if needed.
+///
+///# Example
+///
+///```rust
+///extern crate base62;
+///
+///fn main() {
+///    let mut buf = String::new();
+///    base62::encode_buf(1337u32, &mut buf);
+///    println!("{}", buf);
+///}
+///```
+pub fn encode_buf<T: Into<u128>>(num: T, buf: &mut String) {
     let mut num = num.into();
     if num == 0 {
-        return "0".to_owned();
+        *buf = "0".to_owned();
+        return
     }
     let mut bytes: [u8; MAX_DECODED_LEN] = [0; MAX_DECODED_LEN];
 
@@ -65,7 +86,7 @@ pub fn encode<T: Into<u128>>(num: T) -> String {
         num /= BASE;
     }
 
-    String::from_utf8(bytes[i..MAX_DECODED_LEN].to_vec()).unwrap()
+    *buf = String::from_utf8(bytes[i..MAX_DECODED_LEN].to_vec()).unwrap();
 }
 
 ///Decode from string reference as octets.
@@ -138,6 +159,13 @@ mod tests {
     fn test_encode() {
         assert_eq!(base62::encode(u128::MAX), "7n42DGM5Tflk9n8mt7Fhc7");
         assert_eq!(base62::encode(0u8), "0");
+    }
+
+    #[test]
+    fn test_encode_buf() {
+        let mut buf = String::new();
+        base62::encode_buf(u128::MAX, &mut buf);
+        assert_eq!(buf, "7n42DGM5Tflk9n8mt7Fhc7");
     }
 
     #[test]
