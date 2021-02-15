@@ -126,7 +126,7 @@ pub fn decode<T: AsRef<[u8]>>(input: T) -> Result<u128, DecodeError> {
 mod tests {
     use crate::base62;
     use crate::base62::DecodeError;
-    use quickcheck::TestResult;
+    use quickcheck::{quickcheck, TestResult};
 
     quickcheck! {
         fn encode_decode(xs: u128) -> bool {
