@@ -118,7 +118,7 @@ fn _decode(input: &[u8]) -> Result<u128, DecodeError> {
 
     for (i, c) in input.iter().rev().enumerate() {
         let num = BASE.checked_pow(i as u32).ok_or(ArithmeticOverflow)?;
-        match ALPHABET.binary_search(&c) {
+        match ALPHABET.binary_search(c) {
             Ok(v) => match (v as u128).checked_mul(num) {
                 Some(z) => result = result.checked_add(z as u128).ok_or(ArithmeticOverflow)?,
                 None => return Err(ArithmeticOverflow),
