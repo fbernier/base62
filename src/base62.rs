@@ -33,42 +33,49 @@ impl fmt::Display for DecodeError {
     }
 }
 
-///Encode any uint as base64.
-///Returns a String.
+/// Encode any uint as base64.
+/// Returns a String.
 ///
-///# Example
+/// # Example
 ///
-///```rust
-///extern crate base62;
+/// ```rust
+/// extern crate base62;
 ///
-///fn main() {
-///    let b62 = base62::encode(1337u32);
-///    println!("{}", b62);
-///}
-///```
+/// fn main() {
+///     let b62 = base62::encode(1337u32);
+///     println!("{}", b62);
+/// }
+/// ```
 #[must_use]
 pub fn encode<T: Into<u128>>(num: T) -> String {
+    _encode(num.into())
+}
+
+fn _encode(num: u128) -> String {
     let mut buf = String::with_capacity(MAX_DECODED_LEN);
     encode_buf(num, &mut buf);
     buf
 }
 
-///Encode any uint as base64.
-///Writes into the supplied output buffer, which will grow the buffer if needed.
+/// Encode any uint as base64.
+/// Writes into the supplied output buffer, which will grow the buffer if needed.
 ///
-///# Example
+/// # Example
 ///
-///```rust
-///extern crate base62;
+/// ```rust
+/// extern crate base62;
 ///
-///fn main() {
-///    let mut buf = String::new();
-///    base62::encode_buf(1337u32, &mut buf);
-///    println!("{}", buf);
-///}
-///```
+/// fn main() {
+///     let mut buf = String::new();
+///     base62::encode_buf(1337u32, &mut buf);
+///     println!("{}", buf);
+/// }
+/// ```
 pub fn encode_buf<T: Into<u128>>(num: T, buf: &mut String) {
-    let mut num = num.into();
+    _encode_buf(num.into(), buf)
+}
+
+fn _encode_buf(mut num: u128, buf: &mut String) {
     if num == 0 {
         *buf = "0".to_owned();
         return;
@@ -89,22 +96,25 @@ pub fn encode_buf<T: Into<u128>>(num: T, buf: &mut String) {
     *buf = String::from_utf8(bytes[i..MAX_DECODED_LEN].to_vec()).unwrap();
 }
 
-///Decode from string reference as octets.
-///Returns a Result containing a u128 which can be downcasted to any other uint.
+/// Decode from string reference as octets.
+/// Returns a Result containing a u128 which can be downcasted to any other uint.
 ///
-///# Example
+/// # Example
 ///
-///```rust
-///extern crate base62;
+/// ```rust
+/// extern crate base62;
 ///
-///fn main() {
-///    let bytes = base62::decode("rustlang").unwrap();
-///    println!("{:?}", bytes);
-///}
-///```
+/// fn main() {
+///     let bytes = base62::decode("rustlang").unwrap();
+///     println!("{:?}", bytes);
+/// }
+/// ```
 pub fn decode<T: AsRef<[u8]>>(input: T) -> Result<u128, DecodeError> {
+    _decode(input.as_ref())
+}
+
+fn _decode(input: &[u8]) -> Result<u128, DecodeError> {
     let mut result = 0u128;
-    let input = input.as_ref();
 
     for (i, c) in input.iter().rev().enumerate() {
         let num = BASE.checked_pow(i as u32).ok_or(ArithmeticOverflow)?;
