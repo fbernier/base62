@@ -51,6 +51,7 @@ pub fn encode<T: Into<u128>>(num: T) -> String {
     _encode(num.into())
 }
 
+#[inline]
 fn _encode(num: u128) -> String {
     let mut buf = String::with_capacity(MAX_DECODED_LEN);
     encode_buf(num, &mut buf);
@@ -75,6 +76,7 @@ pub fn encode_buf<T: Into<u128>>(num: T, buf: &mut String) {
     _encode_buf(num.into(), buf)
 }
 
+#[inline(always)]
 fn _encode_buf(mut num: u128, buf: &mut String) {
     if num == 0 {
         *buf = "0".to_owned();
@@ -93,7 +95,9 @@ fn _encode_buf(mut num: u128, buf: &mut String) {
         num /= BASE;
     }
 
-    *buf = String::from_utf8(bytes[i..MAX_DECODED_LEN].to_vec()).unwrap();
+    *buf = std::str::from_utf8(&bytes[i..MAX_DECODED_LEN])
+        .unwrap()
+        .to_owned();
 }
 
 /// Decode from string reference as octets.
@@ -113,6 +117,7 @@ pub fn decode<T: AsRef<[u8]>>(input: T) -> Result<u128, DecodeError> {
     _decode(input.as_ref())
 }
 
+#[inline(always)]
 fn _decode(input: &[u8]) -> Result<u128, DecodeError> {
     let mut result = 0u128;
 

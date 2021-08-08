@@ -16,3 +16,8 @@ exclude = [
 
 [dev-dependencies]
 quickcheck = "1"
+criterion = "0.3.5"
+
+[[bench]]
+name = "base62"
+harness = false
