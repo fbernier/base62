@@ -92,6 +92,20 @@ pub fn encode<T: Into<u128>>(num: T) -> String {
     _encode(num.into(), Flavor::Ordered(Ordered {}))
 }
 
+/// Encode any uint as base64 based on a specified alphabet.
+/// Returns a String.
+///
+/// # Example
+///
+/// ```rust
+/// extern crate base62;
+/// use base62::ORDERED;
+///
+/// fn main() {
+///     let b62 = base62::encode_config(1337u32, ORDERED);
+///     println!("{}", b62);
+/// }
+/// ```
 #[must_use]
 pub fn encode_config<T: Into<u128>>(num: T, flavor: Flavor) -> String {
     _encode(num.into(), flavor)
@@ -122,6 +136,21 @@ pub fn encode_buf<T: Into<u128>>(num: T, buf: &mut String) {
     _encode_buf(num.into(), ORDERED, buf)
 }
 
+/// Encode any uint as base64 based on a specified alphabet.
+/// Writes into the supplied output buffer, which will grow the buffer if needed.
+///
+/// # Example
+///
+/// ```rust
+/// extern crate base62;
+/// use base62::ORDERED;
+///
+/// fn main() {
+///     let mut buf = String::new();
+///     base62::encode_config_buf(1337u32, ORDERED, &mut buf);
+///     println!("{}", buf);
+/// }
+/// ```
 pub fn encode_config_buf<T: Into<u128>>(num: T, flavor: Flavor, buf: &mut String) {
     _encode_buf(num.into(), flavor, buf)
 }
@@ -167,6 +196,20 @@ pub fn decode<T: AsRef<[u8]>>(input: T) -> Result<u128, DecodeError> {
     _decode(input.as_ref(), ORDERED)
 }
 
+/// Decode from string reference as octets based on a specified alphabet.
+/// Returns a Result containing a u128 which can be downcasted to any other uint.
+///
+/// # Example
+///
+/// ```rust
+/// extern crate base62;
+/// use base62::ORDERED;
+///
+/// fn main() {
+///     let bytes = base62::decode_config("rustlang", ORDERED).unwrap();
+///     println!("{:?}", bytes);
+/// }
+/// ```
 pub fn decode_config<T: AsRef<[u8]>>(input: T, flavor: Flavor) -> Result<u128, DecodeError> {
     _decode(input.as_ref(), flavor)
 }
