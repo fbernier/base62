@@ -248,8 +248,8 @@ mod tests {
 
     quickcheck! {
         fn decode_good(xs: String) -> TestResult {
-            if xs.chars().all(|c| c.is_ascii() && Flavor::alphabet(&ORDERED).iter().position(|x| *x == c as u8).is_some()) && !xs.is_empty() {
-                return TestResult::from_bool(decode(&xs).is_ok());
+            if xs.chars().all(|c| c.is_ascii() && Flavor::alphabet(&ORDERED).iter().any(|x| *x == c as u8)) && !xs.is_empty() {
+                TestResult::from_bool(decode(&xs).is_ok())
             } else {
                 TestResult::discard()
             }
@@ -258,10 +258,10 @@ mod tests {
 
     quickcheck! {
         fn decode_bad(xs: String) -> TestResult {
-            if xs.chars().all(|c| c.is_ascii() && Flavor::alphabet(&ORDERED).iter().position(|x| *x == c as u8).is_some()) {
+            if xs.chars().all(|c| c.is_ascii() && Flavor::alphabet(&ORDERED).iter().any(|x| *x == c as u8)) {
                 TestResult::discard()
             } else {
-                return TestResult::from_bool(decode(&xs).is_err());
+                TestResult::from_bool(decode(&xs).is_err())
             }
         }
     }
