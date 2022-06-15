@@ -1,4 +1,9 @@
-const BASE: u128 = 62;
+const BASE: u64 = 62;
+const BASE_TO_2: u64 = BASE.pow(2);
+const BASE_TO_3: u64 = BASE.pow(3);
+const BASE_TO_6: u128 = (BASE as u128).pow(6);
+const BASE_TO_10: u64 = BASE.pow(10);
+const BASE_TO_11: u128 = (BASE as u128).pow(11);
 
 // How much to add to the least-significant five bits of a byte to get the digit's
 // value.
@@ -34,11 +39,6 @@ impl core::fmt::Display for DecodeError {
 
 // Finds out how many base62 digits a value encodes into.
 pub(crate) fn digit_count(mut n: u128) -> usize {
-    const BASE_TO_2: u128 = BASE.pow(2);
-    const BASE_TO_3: u128 = BASE.pow(3);
-    const BASE_TO_6: u128 = BASE.pow(6);
-    const BASE_TO_11: u128 = BASE.pow(11);
-
     let mut result = 1;
 
     if n >= BASE_TO_11 {
@@ -49,6 +49,7 @@ pub(crate) fn digit_count(mut n: u128) -> usize {
         result += 6;
         n /= BASE_TO_6;
     }
+    let mut n = n as u64;
     if n >= BASE_TO_3 {
         result += 3;
         n /= BASE_TO_3;
@@ -75,9 +76,12 @@ macro_rules! internal_encoder_fn {
             let new_len = buf_vec.len().wrapping_add(digits);
             let mut ptr = buf_vec.as_mut_ptr().add(new_len.wrapping_sub(1));
 
-            for _ in 0..digits {
+            let mut digit_index = 0_usize;
+            let mut u64_num = (num % ($crate::BASE_TO_10 as u128)) as u64;
+            num /= $crate::BASE_TO_10 as u128;
+            loop {
                 ::core::ptr::write(ptr, {
-                    let digit = (num % $crate::BASE) as u8;
+                    let digit = (u64_num % $crate::BASE) as u8;
                     match digit {
                         0..=9 => digit.wrapping_add($numeric_offset),
                         10..=35 => digit.wrapping_add($first_letters_offset),
@@ -86,7 +90,16 @@ macro_rules! internal_encoder_fn {
                 });
                 ptr = ptr.sub(1);
 
-                num /= $crate::BASE;
+                digit_index = digit_index.wrapping_add(1);
+                match digit_index {
+                    _ if digit_index == digits => break,
+                    10 => {
+                        u64_num = (num % ($crate::BASE_TO_10 as u128)) as u64;
+                        num /= $crate::BASE_TO_10 as u128;
+                    }
+                    20 => u64_num = num as u64,
+                    _ => u64_num /= $crate::BASE,
+                }
             }
 
             buf_vec.set_len(new_len);
@@ -204,7 +217,7 @@ macro_rules! internal_decoder_fn {
             for (i, &ch) in input.iter().enumerate() {
                 if ch.is_ascii_alphanumeric() {
                     result = result
-                        .checked_mul(BASE)
+                        .checked_mul(BASE as u128)
                         .and_then(|x| {
                             x.checked_add((ch & 0b0001_1111).wrapping_add(
                                 $offsets.wrapping_shr((ch.wrapping_shr(2) & 0b0001_1000) as u32)
@@ -274,7 +287,7 @@ mod tests {
     quickcheck! {
         fn encode_decode(xs: u128) -> bool {
             let encoded = encode(xs);
-            xs == decode(&encoded).unwrap()
+            Ok(xs) == decode(&encoded)
         }
     }
 
@@ -301,6 +314,10 @@ mod tests {
     #[test]
     fn test_encode() {
         assert_eq!(encode(u128::MAX), "7n42DGM5Tflk9n8mt7Fhc7");
+        assert_eq!(
+            encode(92202686130861137968548313400401640448_u128),
+            "26tF05fvSIgh0000000000"
+        );
         assert_eq!(encode(0_u8), "0");
     }
 
@@ -309,11 +326,19 @@ mod tests {
         let mut buf = String::new();
         encode_buf(u128::MAX, &mut buf);
         assert_eq!(buf, "7n42DGM5Tflk9n8mt7Fhc7");
+
+        buf.clear();
+        encode_buf(92202686130861137968548313400401640448_u128, &mut buf);
+        assert_eq!(buf, "26tF05fvSIgh0000000000");
     }
 
     #[test]
     fn test_encode_alternative() {
         assert_eq!(encode_alternative(691337691337_u128), "caCOuUN");
+        assert_eq!(
+            encode_alternative(92202686130861137968548313400401640448_u128),
+            "26Tf05FVsiGH0000000000"
+        );
         assert_eq!(encode_alternative(0_u8), "0");
     }
 
@@ -322,12 +347,20 @@ mod tests {
         let mut buf = String::new();
         encode_alternative_buf(691337691337_u128, &mut buf);
         assert_eq!(buf, "caCOuUN");
+
+        buf.clear();
+        encode_alternative_buf(92202686130861137968548313400401640448_u128, &mut buf);
+        assert_eq!(buf, "26Tf05FVsiGH0000000000");
     }
 
     #[test]
     fn test_decode() {
-        assert_eq!(decode("7n42DGM5Tflk9n8mt7Fhc7").unwrap(), u128::MAX);
-        assert_eq!(decode("").unwrap(), 0);
+        assert_eq!(decode("7n42DGM5Tflk9n8mt7Fhc7"), Ok(u128::MAX));
+        assert_eq!(
+            decode("26tF05fvSIgh0000000000"),
+            Ok(92202686130861137968548313400401640448)
+        );
+        assert_eq!(decode(""), Ok(0));
     }
 
     #[test]
@@ -348,11 +381,12 @@ mod tests {
 
     #[test]
     fn test_decode_alternative() {
+        assert_eq!(decode_alternative("7N42dgm5tFLK9N8MT7fHC7"), Ok(u128::MAX));
         assert_eq!(
-            decode_alternative("7N42dgm5tFLK9N8MT7fHC7").unwrap(),
-            u128::MAX
+            decode_alternative("26Tf05FVsiGH0000000000"),
+            Ok(92202686130861137968548313400401640448)
         );
-        assert_eq!(decode_alternative("").unwrap(), 0);
+        assert_eq!(decode_alternative(""), Ok(0));
     }
 
     #[test]
@@ -373,21 +407,18 @@ mod tests {
 
     #[test]
     fn test_digit_count() {
-        // The maximum length of a base62-encoded `u128`.
-        let max_encoded_len: usize = core::iter::successors(Some(u128::MAX), |&n| Some(n / BASE))
-            .take_while(|&n| n != 0)
-            .count();
-
         // Assume that `digit_count` is a monotonically increasing function and
         // check that the boundaries have the right values.
         assert_eq!(digit_count(0), 1);
-        assert_eq!(digit_count(BASE.pow(0)), 1);
-        for pow in 1..max_encoded_len {
-            let this_power = BASE.pow(pow as u32);
+        assert_eq!(digit_count(1), 1);
+        for pow in 1..22 {
+            let this_power = (BASE as u128).pow(pow as u32);
 
             assert_eq!(digit_count(this_power - 1), pow);
             assert_eq!(digit_count(this_power), pow + 1);
         }
+        assert_eq!(digit_count(u64::MAX as u128), 11);
+        assert_eq!(digit_count(u64::MAX as u128 + 1), 11);
         assert_eq!(digit_count(u128::MAX), 22);
     }
 }
