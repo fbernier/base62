@@ -19,9 +19,11 @@ impl core::fmt::Display for DecodeError {
     fn fmt(&self, f: &mut core::fmt::Formatter) -> core::fmt::Result {
         match *self {
             DecodeError::InvalidBase62Byte(ch, idx) => {
-                write!(f, "Invalid byte b'")?;
-                for char_in_escape in ::core::ascii::escape_default(ch).map(char::from) {
-                    write!(f, "{}", char_in_escape)?;
+                use core::fmt::Write;
+
+                f.write_str("Invalid byte b'")?;
+                for char_in_escape in core::ascii::escape_default(ch) {
+                    f.write_char(char::from(char_in_escape))?;
                 }
                 write!(f, "' at position {}", idx)
             }
