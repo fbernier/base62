@@ -1,3 +1,16 @@
+/*!
+`base62` is a `no_std` crate (requires [`alloc`](alloc)) that has six functions for
+encoding to and decoding from [base62](https://en.wikipedia.org/wiki/Base62).
+
+[![Build status](https://github.com/fbernier/base62/workflows/ci/badge.svg)](https://github.com/fbernier/base62/actions)
+[![Crates.io](https://img.shields.io/crates/v/base62.svg)](https://crates.io/crates/base62)
+[![Docs](https://docs.rs/base62/badge.svg)](https://docs.rs/base62)
+*/
+
+#![no_std]
+extern crate alloc;
+use alloc::string::String;
+
 const BASE: u64 = 62;
 const BASE_TO_2: u64 = BASE.pow(2);
 const BASE_TO_3: u64 = BASE.pow(3);
@@ -14,10 +27,17 @@ const BASE_TO_11: u128 = (BASE as u128).pow(11);
 const STANDARD_OFFSETS: u32 = u32::from_le_bytes([0, -16_i8 as u8, 9, 35]);
 const ALTERNATIVE_OFFSETS: u32 = u32::from_le_bytes([0, -16_i8 as u8, 35, 9]);
 
+/// Indicates the cause of a decoding failure in [`decode`](crate::decode) or
+/// [`decode_alternative`](crate::decode_alternative).
 #[derive(Copy, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub enum DecodeError {
+    /// The decoded number cannot fit into a [`u128`](core::primitive::u128).
     ArithmeticOverflow,
+
+    /// The encoded input is an empty string.
     EmptyInput,
+
+    /// The encoded input contains the given invalid byte at the given index.
     InvalidBase62Byte(u8, usize),
 }
 
@@ -87,10 +107,11 @@ macro_rules! internal_decoder_fn {
 internal_decoder_fn!(_decode, STANDARD_OFFSETS);
 internal_decoder_fn!(_decode_alternative, ALTERNATIVE_OFFSETS);
 
-/// Decodes a base62 byte slice or an equivalent like a `String` using the standard
-/// digit ordering (0 to 9, then A to Z, then a to z).
+/// Decodes a base62 byte slice or an equivalent, like a [`String`](alloc::string::String),
+/// using the standard digit ordering (0 to 9, then A to Z, then a to z).
 ///
-/// Returns a Result containing a `u128`, which can be downcasted to any other uint.
+/// Returns a [`Result`](core::result::Result) containing the decoded
+/// [`u128`](core::primitive::u128) or a [`DecodeError`](crate::DecodeError).
 ///
 /// # Examples
 ///
@@ -105,11 +126,12 @@ pub fn decode<T: AsRef<[u8]>>(input: T) -> Result<u128, DecodeError> {
     _decode(input.as_ref())
 }
 
-/// Decodes a base62 byte slice or an equivalent like a `String` using the alternative
-/// digit ordering (0 to 9, then a to z, then A to Z) with lowercase letters before
-/// uppercase letters.
+/// Decodes a base62 byte slice or an equivalent, like a [`String`](alloc::string::String),
+/// using the alternative digit ordering (0 to 9, then a to z, then A to Z) with lowercase
+/// letters before uppercase letters.
 ///
-/// Returns a Result containing a `u128`, which can be downcasted to any other uint.
+/// Returns a [`Result`](core::result::Result) containing the decoded
+/// [`u128`](core::primitive::u128) or a [`DecodeError`](crate::DecodeError).
 ///
 /// # Examples
 ///
@@ -163,7 +185,7 @@ macro_rules! internal_encoder_fn {
         unsafe fn $fn_name(
             mut num: ::core::primitive::u128,
             digits: ::core::primitive::usize,
-            buf: &mut ::std::string::String,
+            buf: &mut ::alloc::string::String,
         ) {
             let buf_vec = buf.as_mut_vec();
             let new_len = buf_vec.len().wrapping_add(digits);
@@ -207,8 +229,9 @@ macro_rules! internal_encoder_fn {
 internal_encoder_fn!(_encode_buf, 48, 55, 61);
 internal_encoder_fn!(_encode_alternative_buf, 48, 87, 29);
 
-/// Encodes a uint into base62, using the standard digit ordering
-/// (0 to 9, then A to Z, then a to z), and returns the resulting `String`.
+/// Encodes an unsigned integer into base62, using the standard digit ordering
+/// (0 to 9, then A to Z, then a to z), and returns the resulting
+/// [`String`](alloc::string::String).
 ///
 /// # Example
 ///
@@ -229,8 +252,9 @@ pub fn encode<T: Into<u128>>(num: T) -> String {
     buf
 }
 
-/// Appends a uint encoded into base62, using the standard digit ordering
-/// (0 to 9, then A to Z, then a to z), onto the end of a `String`.
+/// Encodes an unsigned integer into base62, using the standard digit ordering
+/// (0 to 9, then A to Z, then a to z), and then appends it onto the end of the given
+/// [`String`](alloc::string::String).
 ///
 /// # Example
 ///
@@ -250,9 +274,9 @@ pub fn encode_buf<T: Into<u128>>(num: T, buf: &mut String) {
     }
 }
 
-/// Encodes a uint into base62, using the alternative digit ordering
+/// Encodes an unsigned integer into base62, using the alternative digit ordering
 /// (0 to 9, then a to z, then A to Z) with lowercase letters before uppercase letters,
-/// and returns the resulting `String`.
+/// and returns the resulting [`String`](alloc::string::String).
 ///
 /// # Example
 ///
@@ -273,9 +297,9 @@ pub fn encode_alternative<T: Into<u128>>(num: T) -> String {
     buf
 }
 
-/// Appends a uint encoded into base62, using the alternative digit ordering
-/// (0 to 9, then a to z, then A to Z) with lowercase letters before uppercase letters,
-/// onto the end of a `String`.
+/// Encodes an unsigned integer into base62, using the alternative digit ordering
+/// (0 to 9, then a to z, then A to Z) with lowercase letters before uppercase letters, and
+/// then appends it onto the end of the given [`String`](alloc::string::String).
 ///
 /// # Example
 ///
@@ -298,6 +322,7 @@ pub fn encode_alternative_buf<T: Into<u128>>(num: T, buf: &mut String) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use alloc::vec::Vec;
     use quickcheck::{quickcheck, TestResult};
 
     quickcheck! {
