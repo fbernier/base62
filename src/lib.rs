@@ -2,7 +2,7 @@ const BASE: u64 = 62;
 const BASE_TO_2: u64 = BASE.pow(2);
 const BASE_TO_3: u64 = BASE.pow(3);
 const BASE_TO_6: u128 = (BASE as u128).pow(6);
-const BASE_TO_10: u64 = BASE.pow(10);
+const BASE_TO_10: u128 = (BASE as u128).pow(10);
 const BASE_TO_11: u128 = (BASE as u128).pow(11);
 
 // How much to add to the least-significant five bits of a byte to get the digit's
@@ -16,13 +16,16 @@ const ALTERNATIVE_OFFSETS: u32 = u32::from_le_bytes([0, -16_i8 as u8, 35, 9]);
 
 #[derive(Copy, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub enum DecodeError {
-    InvalidBase62Byte(u8, usize),
     ArithmeticOverflow,
+    EmptyInput,
+    InvalidBase62Byte(u8, usize),
 }
 
 impl core::fmt::Display for DecodeError {
     fn fmt(&self, f: &mut core::fmt::Formatter) -> core::fmt::Result {
         match *self {
+            DecodeError::ArithmeticOverflow => f.write_str("Decoded number is too large"),
+            DecodeError::EmptyInput => f.write_str("Encoded input is empty"),
             DecodeError::InvalidBase62Byte(ch, idx) => {
                 use core::fmt::Write;
 
@@ -32,7 +35,6 @@ impl core::fmt::Display for DecodeError {
                 }
                 write!(f, "' at position {}", idx)
             }
-            DecodeError::ArithmeticOverflow => write!(f, "Decoded number is too large"),
         }
     }
 }
@@ -71,17 +73,21 @@ macro_rules! internal_encoder_fn {
         //
         // With this function, `buf` MUST ALREADY have its capacity extended
         // to hold all the new base62 characters that will be added
-        unsafe fn $fn_name(mut num: u128, digits: usize, buf: &mut String) {
+        unsafe fn $fn_name(
+            mut num: ::core::primitive::u128,
+            digits: ::core::primitive::usize,
+            buf: &mut ::std::string::String,
+        ) {
             let buf_vec = buf.as_mut_vec();
             let new_len = buf_vec.len().wrapping_add(digits);
             let mut ptr = buf_vec.as_mut_ptr().add(new_len.wrapping_sub(1));
 
             let mut digit_index = 0_usize;
-            let mut u64_num = (num % ($crate::BASE_TO_10 as u128)) as u64;
-            num /= $crate::BASE_TO_10 as u128;
+            let mut u64_num = (num % ($crate::BASE_TO_10)) as ::core::primitive::u64;
+            num /= $crate::BASE_TO_10;
             loop {
                 ::core::ptr::write(ptr, {
-                    let digit = (u64_num % $crate::BASE) as u8;
+                    let digit = (u64_num % $crate::BASE) as ::core::primitive::u8;
                     match digit {
                         0..=9 => digit.wrapping_add($numeric_offset),
                         10..=35 => digit.wrapping_add($first_letters_offset),
@@ -94,10 +100,10 @@ macro_rules! internal_encoder_fn {
                 match digit_index {
                     _ if digit_index == digits => break,
                     10 => {
-                        u64_num = (num % ($crate::BASE_TO_10 as u128)) as u64;
-                        num /= $crate::BASE_TO_10 as u128;
+                        u64_num = (num % $crate::BASE_TO_10) as ::core::primitive::u64;
+                        num /= $crate::BASE_TO_10;
                     }
-                    20 => u64_num = num as u64,
+                    20 => u64_num = num as ::core::primitive::u64,
                     _ => u64_num /= $crate::BASE,
                 }
             }
@@ -209,7 +215,9 @@ macro_rules! internal_decoder_loop_body {
                 .checked_mul(BASE as $uint)
                 .and_then(|x| {
                     x.checked_add(($ch & 0b0001_1111).wrapping_add(
-                        $offsets.wrapping_shr(($ch.wrapping_shr(2) & 0b0001_1000) as u32) as u8,
+                        $offsets.wrapping_shr(
+                            ($ch.wrapping_shr(2) & 0b0001_1000) as ::core::primitive::u32,
+                        ) as ::core::primitive::u8,
                     ) as $uint)
                 })
                 .ok_or($crate::DecodeError::ArithmeticOverflow)?
@@ -221,16 +229,22 @@ macro_rules! internal_decoder_loop_body {
 
 macro_rules! internal_decoder_fn {
     ($fn_name:ident, $offsets:ident) => {
-        fn $fn_name(input: &[u8]) -> Result<u128, DecodeError> {
+        fn $fn_name(
+            input: &[::core::primitive::u8],
+        ) -> ::core::result::Result<::core::primitive::u128, $crate::DecodeError> {
+            if input.is_empty() {
+                return ::core::result::Result::Err($crate::DecodeError::EmptyInput);
+            }
+
             let mut result = 0_u64;
             let mut iter = input.iter().copied().enumerate();
             for (i, ch) in iter.by_ref().take(10) {
-                internal_decoder_loop_body!($offsets, u64, result, ch, i);
+                internal_decoder_loop_body!($offsets, ::core::primitive::u64, result, ch, i);
             }
 
-            let mut result = result as u128;
+            let mut result = result as ::core::primitive::u128;
             for (i, ch) in iter {
-                internal_decoder_loop_body!($offsets, u128, result, ch, i)
+                internal_decoder_loop_body!($offsets, ::core::primitive::u128, result, ch, i)
             }
             Ok(result)
         }
@@ -483,9 +497,6 @@ mod tests {
 
     #[test]
     fn test_decode() {
-        // Test empty base62 string
-        assert_eq!(decode(""), Ok(0));
-
         // Test numeric type boundaries
         assert_eq!(decode("7n42DGM5Tflk9n8mt7Fhc7"), Ok(u128::MAX));
         assert_eq!(decode("LygHa16AHYG"), Ok(u64::MAX as u128 + 1));
@@ -515,6 +526,19 @@ mod tests {
     }
 
     #[test]
+    fn test_decode_overflow() {
+        assert_eq!(
+            decode("7n42DGM5Tflk9n8mt7Fhc78"),
+            Err(DecodeError::ArithmeticOverflow)
+        );
+    }
+
+    #[test]
+    fn test_decode_empty_input() {
+        assert_eq!(decode(""), Err(DecodeError::EmptyInput));
+    }
+
+    #[test]
     fn test_decode_invalid_char() {
         assert_eq!(
             decode("ds{Z455f"),
@@ -523,18 +547,7 @@ mod tests {
     }
 
     #[test]
-    fn test_decode_long_string() {
-        assert_eq!(
-            decode("7n42DGM5Tflk9n8mt7Fhc78"),
-            Err(DecodeError::ArithmeticOverflow)
-        );
-    }
-
-    #[test]
     fn test_decode_alternative() {
-        // Test empty base62 string
-        assert_eq!(decode_alternative(""), Ok(0));
-
         // Test numeric type boundaries
         assert_eq!(decode_alternative("7N42dgm5tFLK9N8MT7fHC7"), Ok(u128::MAX));
         assert_eq!(decode_alternative("lYGhA16ahyg"), Ok(u64::MAX as u128 + 1));
@@ -564,18 +577,23 @@ mod tests {
     }
 
     #[test]
-    fn test_decode_alternative_invalid_char() {
+    fn test_decode_alternative_overflow() {
         assert_eq!(
-            decode_alternative("ds{Z455f"),
-            Err(DecodeError::InvalidBase62Byte(b'{', 2))
+            decode_alternative("7N42dgm5tFLK9N8MT7fHC8"),
+            Err(DecodeError::ArithmeticOverflow)
         );
     }
 
     #[test]
-    fn test_decode_alternative_long_string() {
+    fn test_decode_alternative_empty_input() {
+        assert_eq!(decode_alternative(""), Err(DecodeError::EmptyInput));
+    }
+
+    #[test]
+    fn test_decode_alternative_invalid_char() {
         assert_eq!(
-            decode_alternative("7N42dgm5tFLK9N8MT7fHC8"),
-            Err(DecodeError::ArithmeticOverflow)
+            decode_alternative("ds{Z455f"),
+            Err(DecodeError::InvalidBase62Byte(b'{', 2))
         );
     }
 
