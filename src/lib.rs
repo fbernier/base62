@@ -41,6 +41,89 @@ impl core::fmt::Display for DecodeError {
     }
 }
 
+macro_rules! internal_decoder_loop_body {
+    ($offsets:ident, $uint:ty, $result:ident, $ch:ident, $i:ident) => {
+        if $ch.is_ascii_alphanumeric() {
+            $result = $result
+                .checked_mul(BASE as $uint)
+                .and_then(|x| {
+                    x.checked_add(($ch & 0b0001_1111).wrapping_add(
+                        $offsets.wrapping_shr(
+                            ($ch.wrapping_shr(2) & 0b0001_1000) as ::core::primitive::u32,
+                        ) as ::core::primitive::u8,
+                    ) as $uint)
+                })
+                .ok_or($crate::DecodeError::ArithmeticOverflow)?
+        } else {
+            return Err($crate::DecodeError::InvalidBase62Byte($ch, $i));
+        }
+    };
+}
+
+macro_rules! internal_decoder_fn {
+    ($fn_name:ident, $offsets:ident) => {
+        fn $fn_name(
+            input: &[::core::primitive::u8],
+        ) -> ::core::result::Result<::core::primitive::u128, $crate::DecodeError> {
+            if input.is_empty() {
+                return ::core::result::Result::Err($crate::DecodeError::EmptyInput);
+            }
+
+            let mut result = 0_u64;
+            let mut iter = input.iter().copied().enumerate();
+            for (i, ch) in iter.by_ref().take(10) {
+                internal_decoder_loop_body!($offsets, ::core::primitive::u64, result, ch, i);
+            }
+
+            let mut result = result as ::core::primitive::u128;
+            for (i, ch) in iter {
+                internal_decoder_loop_body!($offsets, ::core::primitive::u128, result, ch, i);
+            }
+            Ok(result)
+        }
+    };
+}
+
+internal_decoder_fn!(_decode, STANDARD_OFFSETS);
+internal_decoder_fn!(_decode_alternative, ALTERNATIVE_OFFSETS);
+
+/// Decodes a base62 byte slice or an equivalent like a `String` using the standard
+/// digit ordering (0 to 9, then A to Z, then a to z).
+///
+/// Returns a Result containing a `u128`, which can be downcasted to any other uint.
+///
+/// # Examples
+///
+/// ```rust
+/// extern crate base62;
+///
+/// let value = base62::decode("rustlang").unwrap();
+/// assert_eq!(value, 189876682536016);
+/// ```
+#[must_use = "this returns the decoded result without modifying the original"]
+pub fn decode<T: AsRef<[u8]>>(input: T) -> Result<u128, DecodeError> {
+    _decode(input.as_ref())
+}
+
+/// Decodes a base62 byte slice or an equivalent like a `String` using the alternative
+/// digit ordering (0 to 9, then a to z, then A to Z) with lowercase letters before
+/// uppercase letters.
+///
+/// Returns a Result containing a `u128`, which can be downcasted to any other uint.
+///
+/// # Examples
+///
+/// ```rust
+/// extern crate base62;
+///
+/// let value = base62::decode_alternative("rustlang").unwrap();
+/// assert_eq!(value, 96813686712946);
+/// ```
+#[must_use = "this returns the decoded result without modifying the original"]
+pub fn decode_alternative<T: AsRef<[u8]>>(input: T) -> Result<u128, DecodeError> {
+    _decode_alternative(input.as_ref())
+}
+
 // Finds out how many base62 digits a value encodes into.
 pub(crate) fn digit_count(mut n: u128) -> usize {
     let mut result = 1;
@@ -210,89 +293,6 @@ pub fn encode_alternative_buf<T: Into<u128>>(num: T, buf: &mut String) {
     unsafe {
         _encode_alternative_buf(num, digits, buf);
     }
-}
-
-macro_rules! internal_decoder_loop_body {
-    ($offsets:ident, $uint:ty, $result:ident, $ch:ident, $i:ident) => {
-        if $ch.is_ascii_alphanumeric() {
-            $result = $result
-                .checked_mul(BASE as $uint)
-                .and_then(|x| {
-                    x.checked_add(($ch & 0b0001_1111).wrapping_add(
-                        $offsets.wrapping_shr(
-                            ($ch.wrapping_shr(2) & 0b0001_1000) as ::core::primitive::u32,
-                        ) as ::core::primitive::u8,
-                    ) as $uint)
-                })
-                .ok_or($crate::DecodeError::ArithmeticOverflow)?
-        } else {
-            return Err($crate::DecodeError::InvalidBase62Byte($ch, $i));
-        }
-    };
-}
-
-macro_rules! internal_decoder_fn {
-    ($fn_name:ident, $offsets:ident) => {
-        fn $fn_name(
-            input: &[::core::primitive::u8],
-        ) -> ::core::result::Result<::core::primitive::u128, $crate::DecodeError> {
-            if input.is_empty() {
-                return ::core::result::Result::Err($crate::DecodeError::EmptyInput);
-            }
-
-            let mut result = 0_u64;
-            let mut iter = input.iter().copied().enumerate();
-            for (i, ch) in iter.by_ref().take(10) {
-                internal_decoder_loop_body!($offsets, ::core::primitive::u64, result, ch, i);
-            }
-
-            let mut result = result as ::core::primitive::u128;
-            for (i, ch) in iter {
-                internal_decoder_loop_body!($offsets, ::core::primitive::u128, result, ch, i);
-            }
-            Ok(result)
-        }
-    };
-}
-
-internal_decoder_fn!(_decode, STANDARD_OFFSETS);
-internal_decoder_fn!(_decode_alternative, ALTERNATIVE_OFFSETS);
-
-/// Decodes a base62 byte slice or an equivalent like a `String` using the standard
-/// digit ordering (0 to 9, then A to Z, then a to z).
-///
-/// Returns a Result containing a `u128`, which can be downcasted to any other uint.
-///
-/// # Examples
-///
-/// ```rust
-/// extern crate base62;
-///
-/// let value = base62::decode("rustlang").unwrap();
-/// assert_eq!(value, 189876682536016);
-/// ```
-#[must_use = "this returns the decoded result without modifying the original"]
-pub fn decode<T: AsRef<[u8]>>(input: T) -> Result<u128, DecodeError> {
-    _decode(input.as_ref())
-}
-
-/// Decodes a base62 byte slice or an equivalent like a `String` using the alternative
-/// digit ordering (0 to 9, then a to z, then A to Z) with lowercase letters before
-/// uppercase letters.
-///
-/// Returns a Result containing a `u128`, which can be downcasted to any other uint.
-///
-/// # Examples
-///
-/// ```rust
-/// extern crate base62;
-///
-/// let value = base62::decode_alternative("rustlang").unwrap();
-/// assert_eq!(value, 96813686712946);
-/// ```
-#[must_use = "this returns the decoded result without modifying the original"]
-pub fn decode_alternative<T: AsRef<[u8]>>(input: T) -> Result<u128, DecodeError> {
-    _decode_alternative(input.as_ref())
 }
 
 #[cfg(test)]
