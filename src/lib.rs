@@ -1,7 +1,7 @@
 const BASE: u64 = 62;
 const BASE_TO_2: u64 = BASE.pow(2);
 const BASE_TO_3: u64 = BASE.pow(3);
-const BASE_TO_6: u128 = (BASE as u128).pow(6);
+const BASE_TO_6: u64 = BASE.pow(6);
 const BASE_TO_10: u128 = (BASE as u128).pow(10);
 const BASE_TO_11: u128 = (BASE as u128).pow(11);
 
@@ -47,21 +47,23 @@ pub(crate) fn digit_count(mut n: u128) -> usize {
         result += 11;
         n /= BASE_TO_11;
     }
+    if n >= BASE_TO_10 {
+        return result + 10;
+    }
+    let mut n = n as u64;
     if n >= BASE_TO_6 {
         result += 6;
         n /= BASE_TO_6;
     }
-    let mut n = n as u64;
     if n >= BASE_TO_3 {
         result += 3;
         n /= BASE_TO_3;
     }
     if n >= BASE_TO_2 {
-        result += 2;
-        n /= BASE_TO_2;
+        return result + 2;
     }
     if n >= BASE {
-        result += 1;
+        return result + 1;
     }
 
     result
