@@ -5,8 +5,8 @@ const BASE_TO_6: u64 = BASE.pow(6);
 const BASE_TO_10: u128 = (BASE as u128).pow(10);
 const BASE_TO_11: u128 = (BASE as u128).pow(11);
 
-// How much to add to the least-significant five bits of a byte to get the digit's
-// value.
+// How much to add to the least-significant five bits of an encoded byte to get
+// the base 62 digit's decoded value.
 //
 // Index 1: decimal digits
 // Index 2: uppercase letters
@@ -24,16 +24,18 @@ pub enum DecodeError {
 impl core::fmt::Display for DecodeError {
     fn fmt(&self, f: &mut core::fmt::Formatter) -> core::fmt::Result {
         match *self {
-            DecodeError::ArithmeticOverflow => f.write_str("Decoded number is too large"),
-            DecodeError::EmptyInput => f.write_str("Encoded input is empty"),
+            DecodeError::ArithmeticOverflow => {
+                f.write_str("Decoded number cannot fit into a `u128`")
+            }
+            DecodeError::EmptyInput => f.write_str("Encoded input is an empty string"),
             DecodeError::InvalidBase62Byte(ch, idx) => {
                 use core::fmt::Write;
 
-                f.write_str("Invalid byte b'")?;
+                f.write_str("Encoded input contains the invalid byte b'")?;
                 for char_in_escape in core::ascii::escape_default(ch) {
                     f.write_char(char::from(char_in_escape))?;
                 }
-                write!(f, "' at position {}", idx)
+                write!(f, "' at index {}", idx)
             }
         }
     }
@@ -71,10 +73,10 @@ pub(crate) fn digit_count(mut n: u128) -> usize {
 
 macro_rules! internal_encoder_fn {
     ($fn_name:ident, $numeric_offset:literal, $first_letters_offset:literal, $last_letters_offset:literal) => {
-        // # Safety
-        //
-        // With this function, `buf` MUST ALREADY have its capacity extended
-        // to hold all the new base62 characters that will be added
+        /// # Safety
+        ///
+        /// With this function, `buf` MUST ALREADY have its capacity extended
+        /// to hold all the new base62 characters that will be added
         unsafe fn $fn_name(
             mut num: ::core::primitive::u128,
             digits: ::core::primitive::usize,
@@ -82,10 +84,10 @@ macro_rules! internal_encoder_fn {
         ) {
             let buf_vec = buf.as_mut_vec();
             let new_len = buf_vec.len().wrapping_add(digits);
-            let mut ptr = buf_vec.as_mut_ptr().add(new_len.wrapping_sub(1));
+            let mut ptr = buf_vec.as_mut_ptr().add(new_len).sub(1);
 
             let mut digit_index = 0_usize;
-            let mut u64_num = (num % ($crate::BASE_TO_10)) as ::core::primitive::u64;
+            let mut u64_num = (num % $crate::BASE_TO_10) as ::core::primitive::u64;
             num /= $crate::BASE_TO_10;
             loop {
                 ::core::ptr::write(ptr, {
@@ -152,9 +154,9 @@ pub fn encode<T: Into<u128>>(num: T) -> String {
 /// ```rust
 /// extern crate base62;
 ///
-/// let mut buf = String::new();
+/// let mut buf = String::from("1337 in base62: ");
 /// base62::encode_buf(1337_u32, &mut buf);
-/// assert_eq!(buf, "LZ");
+/// assert_eq!(buf, "1337 in base62: LZ");
 /// ```
 pub fn encode_buf<T: Into<u128>>(num: T, buf: &mut String) {
     let num = num.into();
@@ -174,8 +176,8 @@ pub fn encode_buf<T: Into<u128>>(num: T, buf: &mut String) {
 /// ```rust
 /// extern crate base62;
 ///
-/// let b62 = base62::encode(1337_u32);
-/// assert_eq!(b62, "LZ");
+/// let b62 = base62::encode_alternative(1337_u32);
+/// assert_eq!(b62, "lz");
 /// ```
 #[must_use = "this allocates a new `String`"]
 pub fn encode_alternative<T: Into<u128>>(num: T) -> String {
@@ -197,9 +199,9 @@ pub fn encode_alternative<T: Into<u128>>(num: T) -> String {
 /// ```rust
 /// extern crate base62;
 ///
-/// let mut buf = String::new();
+/// let mut buf = String::from("1337 in base62 alternative: ");
 /// base62::encode_alternative_buf(1337_u32, &mut buf);
-/// assert_eq!(buf, "lz");
+/// assert_eq!(buf, "1337 in base62 alternative: lz");
 /// ```
 pub fn encode_alternative_buf<T: Into<u128>>(num: T, buf: &mut String) {
     let num = num.into();
@@ -246,7 +248,7 @@ macro_rules! internal_decoder_fn {
 
             let mut result = result as ::core::primitive::u128;
             for (i, ch) in iter {
-                internal_decoder_loop_body!($offsets, ::core::primitive::u128, result, ch, i)
+                internal_decoder_loop_body!($offsets, ::core::primitive::u128, result, ch, i);
             }
             Ok(result)
         }
@@ -299,28 +301,27 @@ mod tests {
     use quickcheck::{quickcheck, TestResult};
 
     quickcheck! {
-        fn encode_decode(xs: u128) -> bool {
-            let encoded = encode(xs);
-            Ok(xs) == decode(&encoded)
+        fn encode_decode(num: u128) -> bool {
+            decode(encode(num)) == Ok(num)
         }
     }
 
     quickcheck! {
-        fn decode_good(xs: String) -> TestResult {
-            if xs.chars().all(|ch| ch.is_ascii_alphanumeric()) && !xs.is_empty() {
-                TestResult::from_bool(decode(&xs).is_ok())
-            } else {
+        fn decode_bad(input: Vec<u8>) -> TestResult {
+            if !input.is_empty() && input.iter().all(|ch| ch.is_ascii_alphanumeric()) {
                 TestResult::discard()
+            } else {
+                TestResult::from_bool(decode(&input).is_err())
             }
         }
     }
 
     quickcheck! {
-        fn decode_bad(xs: String) -> TestResult {
-            if xs.chars().all(|ch| ch.is_ascii_alphanumeric()) {
-                TestResult::discard()
+        fn decode_good(input: Vec<u8>) -> TestResult {
+            if !input.is_empty() && input.iter().all(|ch| ch.is_ascii_alphanumeric()) {
+                TestResult::from_bool(decode(&input).is_ok())
             } else {
-                TestResult::from_bool(decode(&xs).is_err())
+                TestResult::discard()
             }
         }
     }
@@ -339,7 +340,7 @@ mod tests {
         let mut power_str = String::with_capacity(22);
         power_str.push('1');
         for _ in 1..22 {
-            power *= 62;
+            power *= BASE as u128;
             power_minus_one_str.push('z');
             power_str.push('0');
 
@@ -388,7 +389,7 @@ mod tests {
         let mut power_str = String::with_capacity(22);
         power_str.push('1');
         for _ in 1..22 {
-            power *= 62;
+            power *= BASE as u128;
             power_minus_one_str.push('z');
             power_str.push('0');
 
@@ -425,7 +426,7 @@ mod tests {
         let mut power_str = String::with_capacity(22);
         power_str.push('1');
         for _ in 1..22 {
-            power *= 62;
+            power *= BASE as u128;
             power_minus_one_str.push('Z');
             power_str.push('0');
 
@@ -474,7 +475,7 @@ mod tests {
         let mut power_str = String::with_capacity(22);
         power_str.push('1');
         for _ in 1..22 {
-            power *= 62;
+            power *= BASE as u128;
             power_minus_one_str.push('Z');
             power_str.push('0');
 
@@ -511,7 +512,7 @@ mod tests {
         let mut power_str = String::with_capacity(22);
         power_str.push('1');
         for _ in 1..22 {
-            power *= 62;
+            power *= BASE as u128;
             power_minus_one_str.push('z');
             power_str.push('0');
 
@@ -562,7 +563,7 @@ mod tests {
         let mut power_str = String::with_capacity(22);
         power_str.push('1');
         for _ in 1..22 {
-            power *= 62;
+            power *= BASE as u128;
             power_minus_one_str.push('Z');
             power_str.push('0');
 
