@@ -210,24 +210,35 @@ pub fn encode_alternative_buf<T: Into<u128>>(num: T, buf: &mut String) {
     }
 }
 
+macro_rules! internal_decoder_loop_body {
+    ($offsets:ident, $uint:ty, $result:ident, $ch:ident, $i:ident) => {
+        if $ch.is_ascii_alphanumeric() {
+            $result = $result
+                .checked_mul(BASE as $uint)
+                .and_then(|x| {
+                    x.checked_add(($ch & 0b0001_1111).wrapping_add(
+                        $offsets.wrapping_shr(($ch.wrapping_shr(2) & 0b0001_1000) as u32) as u8,
+                    ) as $uint)
+                })
+                .ok_or($crate::DecodeError::ArithmeticOverflow)?
+        } else {
+            return Err($crate::DecodeError::InvalidBase62Byte($ch, $i));
+        }
+    };
+}
+
 macro_rules! internal_decoder_fn {
     ($fn_name:ident, $offsets:ident) => {
         fn $fn_name(input: &[u8]) -> Result<u128, DecodeError> {
-            let mut result = 0_u128;
-            for (i, &ch) in input.iter().enumerate() {
-                if ch.is_ascii_alphanumeric() {
-                    result = result
-                        .checked_mul(BASE as u128)
-                        .and_then(|x| {
-                            x.checked_add((ch & 0b0001_1111).wrapping_add(
-                                $offsets.wrapping_shr((ch.wrapping_shr(2) & 0b0001_1000) as u32)
-                                    as u8,
-                            ) as u128)
-                        })
-                        .ok_or($crate::DecodeError::ArithmeticOverflow)?
-                } else {
-                    return Err($crate::DecodeError::InvalidBase62Byte(ch, i));
-                }
+            let mut result = 0_u64;
+            let mut iter = input.iter().copied().enumerate();
+            for (i, ch) in iter.by_ref().take(10) {
+                internal_decoder_loop_body!($offsets, u64, result, ch, i);
+            }
+
+            let mut result = result as u128;
+            for (i, ch) in iter {
+                internal_decoder_loop_body!($offsets, u128, result, ch, i)
             }
 
             Ok(result)
@@ -313,7 +324,22 @@ mod tests {
 
     #[test]
     fn test_encode() {
+        for i in 1..22 {
+            assert_eq!(
+                encode(62_u128.pow(i)),
+                core::iter::once('1')
+                    .chain(core::iter::repeat('0').take(i as usize))
+                    .collect::<String>()
+            );
+            assert_eq!(
+                encode(62_u128.pow(i) - 1),
+                core::iter::repeat('z').take(i as usize).collect::<String>()
+            );
+        }
+
         assert_eq!(encode(u128::MAX), "7n42DGM5Tflk9n8mt7Fhc7");
+        assert_eq!(encode(u64::MAX as u128 + 1), "LygHa16AHYG");
+        assert_eq!(encode(u64::MAX), "LygHa16AHYF");
         assert_eq!(
             encode(92202686130861137968548313400401640448_u128),
             "26tF05fvSIgh0000000000"
@@ -324,8 +350,35 @@ mod tests {
     #[test]
     fn test_encode_buf() {
         let mut buf = String::new();
+        for i in 1..22 {
+            buf.clear();
+            encode_buf(62_u128.pow(i), &mut buf);
+            assert_eq!(
+                buf,
+                core::iter::once('1')
+                    .chain(core::iter::repeat('0').take(i as usize))
+                    .collect::<String>()
+            );
+
+            buf.clear();
+            encode_buf(62_u128.pow(i) - 1, &mut buf);
+            assert_eq!(
+                buf,
+                core::iter::repeat('z').take(i as usize).collect::<String>()
+            );
+        }
+
+        buf.clear();
         encode_buf(u128::MAX, &mut buf);
         assert_eq!(buf, "7n42DGM5Tflk9n8mt7Fhc7");
+
+        buf.clear();
+        encode_buf(u64::MAX as u128 + 1, &mut buf);
+        assert_eq!(buf, "LygHa16AHYG");
+
+        buf.clear();
+        encode_buf(u64::MAX, &mut buf);
+        assert_eq!(buf, "LygHa16AHYF");
 
         buf.clear();
         encode_buf(92202686130861137968548313400401640448_u128, &mut buf);
@@ -334,6 +387,22 @@ mod tests {
 
     #[test]
     fn test_encode_alternative() {
+        for i in 1..22 {
+            assert_eq!(
+                encode_alternative(62_u128.pow(i)),
+                core::iter::once('1')
+                    .chain(core::iter::repeat('0').take(i as usize))
+                    .collect::<String>()
+            );
+            assert_eq!(
+                encode_alternative(62_u128.pow(i) - 1),
+                core::iter::repeat('Z').take(i as usize).collect::<String>()
+            );
+        }
+
+        assert_eq!(encode_alternative(u64::MAX as u128 + 1), "lYGhA16ahyg");
+        assert_eq!(encode_alternative(u64::MAX), "lYGhA16ahyf");
+
         assert_eq!(encode_alternative(691337691337_u128), "caCOuUN");
         assert_eq!(
             encode_alternative(92202686130861137968548313400401640448_u128),
@@ -345,6 +414,33 @@ mod tests {
     #[test]
     fn test_encode_alternative_buf() {
         let mut buf = String::new();
+        for i in 1..22 {
+            buf.clear();
+            encode_alternative_buf(62_u128.pow(i), &mut buf);
+            assert_eq!(
+                buf,
+                core::iter::once('1')
+                    .chain(core::iter::repeat('0').take(i as usize))
+                    .collect::<String>()
+            );
+
+            buf.clear();
+            encode_alternative_buf(62_u128.pow(i) - 1, &mut buf);
+            assert_eq!(
+                buf,
+                core::iter::repeat('Z').take(i as usize).collect::<String>()
+            );
+        }
+
+        buf.clear();
+        encode_alternative_buf(u64::MAX as u128 + 1, &mut buf);
+        assert_eq!(buf, "lYGhA16ahyg");
+
+        buf.clear();
+        encode_alternative_buf(u64::MAX, &mut buf);
+        assert_eq!(buf, "lYGhA16ahyf");
+
+        buf.clear();
         encode_alternative_buf(691337691337_u128, &mut buf);
         assert_eq!(buf, "caCOuUN");
 
@@ -355,7 +451,24 @@ mod tests {
 
     #[test]
     fn test_decode() {
+        for i in 1..22 {
+            assert_eq!(
+                decode(
+                    core::iter::once('1')
+                        .chain(core::iter::repeat('0').take(i as usize))
+                        .collect::<String>()
+                ),
+                Ok(62_u128.pow(i))
+            );
+            assert_eq!(
+                decode(core::iter::repeat('z').take(i as usize).collect::<String>()),
+                Ok(62_u128.pow(i) - 1)
+            );
+        }
+
         assert_eq!(decode("7n42DGM5Tflk9n8mt7Fhc7"), Ok(u128::MAX));
+        assert_eq!(decode("LygHa16AHYG"), Ok(u64::MAX as u128 + 1));
+        assert_eq!(decode("LygHa16AHYF"), Ok(u64::MAX as u128));
         assert_eq!(
             decode("26tF05fvSIgh0000000000"),
             Ok(92202686130861137968548313400401640448)
@@ -381,7 +494,24 @@ mod tests {
 
     #[test]
     fn test_decode_alternative() {
+        for i in 1..22 {
+            assert_eq!(
+                decode_alternative(
+                    core::iter::once('1')
+                        .chain(core::iter::repeat('0').take(i as usize))
+                        .collect::<String>()
+                ),
+                Ok(62_u128.pow(i))
+            );
+            assert_eq!(
+                decode_alternative(core::iter::repeat('Z').take(i as usize).collect::<String>()),
+                Ok(62_u128.pow(i) - 1)
+            );
+        }
+
         assert_eq!(decode_alternative("7N42dgm5tFLK9N8MT7fHC7"), Ok(u128::MAX));
+        assert_eq!(decode_alternative("lYGhA16ahyg"), Ok(u64::MAX as u128 + 1));
+        assert_eq!(decode_alternative("lYGhA16ahyf"), Ok(u64::MAX as u128));
         assert_eq!(
             decode_alternative("26Tf05FVsiGH0000000000"),
             Ok(92202686130861137968548313400401640448)
