@@ -64,33 +64,38 @@ pub(crate) fn digit_count(mut n: u128) -> usize {
 
 macro_rules! internal_encoder_fn {
     ($fn_name:ident, $numeric_offset:literal, $first_letters_offset:literal, $last_letters_offset:literal) => {
-        fn $fn_name(mut num: u128, digits: usize, buf: &mut String) {
-            let buf_vec = unsafe { buf.as_mut_vec() };
+        // # Safety
+        //
+        // With this function, `buf` MUST ALREADY have its capacity extended
+        // to hold all the new base62 characters that will be added
+        unsafe fn $fn_name(mut num: u128, digits: usize, buf: &mut String) {
+            let buf_vec = buf.as_mut_vec();
             let new_len = buf_vec.len().wrapping_add(digits);
-            let mut ptr = unsafe { buf_vec.as_mut_ptr().add(new_len.wrapping_sub(1)) };
+            let mut ptr = buf_vec.as_mut_ptr().add(new_len.wrapping_sub(1));
 
             for _ in 0..digits {
-                unsafe {
-                    ::core::ptr::write(ptr, {
-                        let digit = (num % $crate::BASE) as u8;
-                        match digit {
-                            0..=9 => digit.wrapping_add($numeric_offset),
-                            10..=35 => digit.wrapping_add($first_letters_offset),
-                            _ => digit.wrapping_add($last_letters_offset),
-                        }
-                    });
-                    ptr = ptr.sub(1);
-                }
+                ::core::ptr::write(ptr, {
+                    let digit = (num % $crate::BASE) as u8;
+                    match digit {
+                        0..=9 => digit.wrapping_add($numeric_offset),
+                        10..=35 => digit.wrapping_add($first_letters_offset),
+                        _ => digit.wrapping_add($last_letters_offset),
+                    }
+                });
+                ptr = ptr.sub(1);
 
                 num /= $crate::BASE;
             }
-            unsafe {
-                buf_vec.set_len(new_len);
-            }
+
+            buf_vec.set_len(new_len);
         }
     };
 }
 
+// # Safety
+//
+// With these functions, `buf` MUST ALREADY have its capacity extended
+// to hold all the new base62 characters that will be added
 internal_encoder_fn!(_encode_buf, 48, 55, 61);
 internal_encoder_fn!(_encode_alternative_buf, 48, 87, 29);
 
@@ -112,7 +117,9 @@ pub fn encode<T: Into<u128>>(num: T) -> String {
     let num = num.into();
     let digits = digit_count(num);
     let mut buf = String::with_capacity(digits);
-    _encode_buf(num, digits, &mut buf);
+    unsafe {
+        _encode_buf(num, digits, &mut buf);
+    }
     buf
 }
 
@@ -134,7 +141,9 @@ pub fn encode_buf<T: Into<u128>>(num: T, buf: &mut String) {
     let num = num.into();
     let digits = digit_count(num);
     buf.reserve(digits);
-    _encode_buf(num, digits, buf);
+    unsafe {
+        _encode_buf(num, digits, buf);
+    }
 }
 
 /// Encodes a uint into base62, using the alternative digit ordering
@@ -156,7 +165,9 @@ pub fn encode_alternative<T: Into<u128>>(num: T) -> String {
     let num = num.into();
     let digits = digit_count(num);
     let mut buf = String::with_capacity(digits);
-    _encode_alternative_buf(num, digits, &mut buf);
+    unsafe {
+        _encode_alternative_buf(num, digits, &mut buf);
+    }
     buf
 }
 
@@ -179,7 +190,9 @@ pub fn encode_alternative_buf<T: Into<u128>>(num: T, buf: &mut String) {
     let num = num.into();
     let digits = digit_count(num);
     buf.reserve(digits);
-    _encode_alternative_buf(num, digits, buf);
+    unsafe {
+        _encode_alternative_buf(num, digits, buf);
+    }
 }
 
 macro_rules! internal_decoder_fn {
