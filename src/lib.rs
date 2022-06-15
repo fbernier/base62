@@ -1,19 +1,4 @@
-use self::DecodeError::*;
-
 const BASE: u128 = 62;
-
-// The maximum length of a base62-encoded `u128`.
-const MAX_ENCODED_LEN: usize = {
-    let mut n = u128::MAX;
-    let mut result = 0;
-
-    while n != 0 {
-        n /= BASE;
-        result += 1;
-    }
-
-    result
-};
 
 // How much to add to the least-significant five bits of a byte to get the digit's
 // value.
@@ -33,15 +18,14 @@ pub enum DecodeError {
 impl core::fmt::Display for DecodeError {
     fn fmt(&self, f: &mut core::fmt::Formatter) -> core::fmt::Result {
         match *self {
-            InvalidBase62Byte(ch, idx) => write!(
-                f,
-                "Invalid byte b'{}' at position {}",
-                core::ascii::escape_default(ch)
-                    .map(char::from)
-                    .collect::<String>(),
-                idx
-            ),
-            ArithmeticOverflow => write!(f, "Decode result is too large"),
+            DecodeError::InvalidBase62Byte(ch, idx) => {
+                write!(f, "Invalid byte b'")?;
+                for char_in_escape in ::core::ascii::escape_default(ch).map(char::from) {
+                    write!(f, "{}", char_in_escape)?;
+                }
+                write!(f, "' at position {}", idx)
+            }
+            DecodeError::ArithmeticOverflow => write!(f, "Decoded number is too large"),
         }
     }
 }
@@ -77,6 +61,38 @@ pub(crate) fn digit_count(mut n: u128) -> usize {
 
     result
 }
+
+macro_rules! internal_encoder_fn {
+    ($fn_name:ident, $numeric_offset:literal, $first_letters_offset:literal, $last_letters_offset:literal) => {
+        fn $fn_name(mut num: u128, digits: usize, buf: &mut String) {
+            let buf_vec = unsafe { buf.as_mut_vec() };
+            let new_len = buf_vec.len().wrapping_add(digits);
+            let mut ptr = unsafe { buf_vec.as_mut_ptr().add(new_len.wrapping_sub(1)) };
+
+            for _ in 0..digits {
+                unsafe {
+                    ::core::ptr::write(ptr, {
+                        let digit = (num % $crate::BASE) as u8;
+                        match digit {
+                            0..=9 => digit.wrapping_add($numeric_offset),
+                            10..=35 => digit.wrapping_add($first_letters_offset),
+                            _ => digit.wrapping_add($last_letters_offset),
+                        }
+                    });
+                    ptr = ptr.sub(1);
+                }
+
+                num /= $crate::BASE;
+            }
+            unsafe {
+                buf_vec.set_len(new_len);
+            }
+        }
+    };
+}
+
+internal_encoder_fn!(_encode_buf, 48, 55, 61);
+internal_encoder_fn!(_encode_alternative_buf, 48, 87, 29);
 
 /// Encodes a uint into base62, using the standard digit ordering
 /// (0 to 9, then A to Z, then a to z), and returns the resulting `String`.
@@ -119,20 +135,6 @@ pub fn encode_buf<T: Into<u128>>(num: T, buf: &mut String) {
     let digits = digit_count(num);
     buf.reserve(digits);
     _encode_buf(num, digits, buf);
-}
-
-fn _encode_buf(mut num: u128, digits: usize, buf: &mut String) {
-    let mut bytes = [0; MAX_ENCODED_LEN];
-    for i in (0..digits).rev() {
-        bytes[i] = match (num % BASE) as u8 {
-            digit @ 0..=9 => digit + 48,
-            digit @ 10..=35 => digit + 55,
-            digit => digit + 61,
-        };
-        num /= BASE;
-    }
-
-    buf.push_str(unsafe { core::str::from_utf8_unchecked(&bytes[0..digits]) });
 }
 
 /// Encodes a uint into base62, using the alternative digit ordering
@@ -180,19 +182,33 @@ pub fn encode_alternative_buf<T: Into<u128>>(num: T, buf: &mut String) {
     _encode_alternative_buf(num, digits, buf);
 }
 
-fn _encode_alternative_buf(mut num: u128, digits: usize, buf: &mut String) {
-    let mut bytes = [0; MAX_ENCODED_LEN];
-    for i in (0..digits).rev() {
-        bytes[i] = match (num % BASE) as u8 {
-            digit @ 0..=9 => digit + 48,
-            digit @ 10..=35 => digit + 87,
-            digit => digit + 29,
-        };
-        num /= BASE;
-    }
+macro_rules! internal_decoder_fn {
+    ($fn_name:ident, $offsets:ident) => {
+        fn $fn_name(input: &[u8]) -> Result<u128, DecodeError> {
+            let mut result = 0_u128;
+            for (i, &ch) in input.iter().enumerate() {
+                if ch.is_ascii_alphanumeric() {
+                    result = result
+                        .checked_mul(BASE)
+                        .and_then(|x| {
+                            x.checked_add((ch & 0b0001_1111).wrapping_add(
+                                $offsets.wrapping_shr((ch.wrapping_shr(2) & 0b0001_1000) as u32)
+                                    as u8,
+                            ) as u128)
+                        })
+                        .ok_or($crate::DecodeError::ArithmeticOverflow)?
+                } else {
+                    return Err($crate::DecodeError::InvalidBase62Byte(ch, i));
+                }
+            }
 
-    buf.push_str(unsafe { core::str::from_utf8_unchecked(&bytes[0..digits]) });
+            Ok(result)
+        }
+    };
 }
+
+internal_decoder_fn!(_decode, STANDARD_OFFSETS);
+internal_decoder_fn!(_decode_alternative, ALTERNATIVE_OFFSETS);
 
 /// Decodes a base62 byte slice or an equivalent like a `String` using the standard
 /// digit ordering (0 to 9, then A to Z, then a to z).
@@ -211,27 +227,6 @@ fn _encode_alternative_buf(mut num: u128, digits: usize, buf: &mut String) {
 /// ```
 #[must_use = "this returns the decoded result without modifying the original"]
 pub fn decode<T: AsRef<[u8]>>(input: T) -> Result<u128, DecodeError> {
-    fn _decode(input: &[u8]) -> Result<u128, DecodeError> {
-        let mut result = 0_u128;
-        for (i, &ch) in input.iter().enumerate() {
-            if ch.is_ascii_alphanumeric() {
-                result = result
-                    .checked_mul(BASE)
-                    .and_then(|x| {
-                        x.checked_add((ch & 0b0001_1111).wrapping_add(
-                            STANDARD_OFFSETS.wrapping_shr((ch.wrapping_shr(2) & 0b0001_1000) as u32)
-                                as u8,
-                        ) as u128)
-                    })
-                    .ok_or(ArithmeticOverflow)?
-            } else {
-                return Err(InvalidBase62Byte(ch, i));
-            }
-        }
-
-        Ok(result)
-    }
-
     _decode(input.as_ref())
 }
 
@@ -253,30 +248,6 @@ pub fn decode<T: AsRef<[u8]>>(input: T) -> Result<u128, DecodeError> {
 /// ```
 #[must_use = "this returns the decoded result without modifying the original"]
 pub fn decode_alternative<T: AsRef<[u8]>>(input: T) -> Result<u128, DecodeError> {
-    fn _decode_alternative(input: &[u8]) -> Result<u128, DecodeError> {
-        let mut result = 0_u128;
-        for (i, &ch) in input.iter().enumerate() {
-            if ch.is_ascii_alphanumeric() {
-                result = result
-                    .checked_mul(BASE)
-                    .and_then(|x| {
-                        x.checked_add(
-                            (ch & 0b0001_1111).wrapping_add(
-                                ALTERNATIVE_OFFSETS
-                                    .wrapping_shr((ch.wrapping_shr(2) & 0b0001_1000) as u32)
-                                    as u8,
-                            ) as u128,
-                        )
-                    })
-                    .ok_or(ArithmeticOverflow)?
-            } else {
-                return Err(InvalidBase62Byte(ch, i));
-            }
-        }
-
-        Ok(result)
-    }
-
     _decode_alternative(input.as_ref())
 }
 
@@ -387,11 +358,16 @@ mod tests {
 
     #[test]
     fn test_digit_count() {
+        // The maximum length of a base62-encoded `u128`.
+        let max_encoded_len: usize = core::iter::successors(Some(u128::MAX), |&n| Some(n / BASE))
+            .take_while(|&n| n != 0)
+            .count();
+
         // Assume that `digit_count` is a monotonically increasing function and
         // check that the boundaries have the right values.
         assert_eq!(digit_count(0), 1);
         assert_eq!(digit_count(BASE.pow(0)), 1);
-        for pow in 1..MAX_ENCODED_LEN {
+        for pow in 1..max_encoded_len {
             let this_power = BASE.pow(pow as u32);
 
             assert_eq!(digit_count(this_power - 1), pow);
