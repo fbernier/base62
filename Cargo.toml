@@ -1,7 +1,7 @@
 [package]
 name = "base62"
 version = "2.0.0"
-authors = ["Francois Bernier <frankbernier@gmail.com>", "Chai T. Rex <ChaiTRex@users.noreply.github.com"]
+authors = ["Francois Bernier <frankbernier@gmail.com>", "Chai T. Rex <ChaiTRex@users.noreply.github.com>"]
 edition = "2018"
 description = "A Base62 encoding/decoding library"
 documentation = "https://docs.rs/base62/"
