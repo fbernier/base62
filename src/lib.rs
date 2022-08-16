@@ -12,20 +12,11 @@ extern crate alloc;
 use alloc::string::String;
 
 const BASE: u64 = 62;
-const BASE_TO_2: u64 = BASE.pow(2);
-const BASE_TO_3: u64 = BASE.pow(3);
-const BASE_TO_6: u64 = BASE.pow(6);
-const BASE_TO_10: u128 = (BASE as u128).pow(10);
-const BASE_TO_11: u128 = (BASE as u128).pow(11);
-
-// How much to add to the least-significant five bits of an encoded byte to get
-// the base 62 digit's decoded value.
-//
-// Index 1: decimal digits
-// Index 2: uppercase letters
-// Index 3: lowercase letters
-const STANDARD_OFFSETS: u32 = u32::from_le_bytes([0, -16_i8 as u8, 9, 35]);
-const ALTERNATIVE_OFFSETS: u32 = u32::from_le_bytes([0, -16_i8 as u8, 35, 9]);
+const BASE_TO_2: u64 = BASE * BASE;
+const BASE_TO_3: u64 = BASE_TO_2 * BASE;
+const BASE_TO_6: u64 = BASE_TO_3 * BASE_TO_3;
+const BASE_TO_10: u128 = BASE_TO_6 as u128 * BASE_TO_2 as u128 * BASE_TO_2 as u128;
+const BASE_TO_11: u128 = BASE_TO_10 * BASE as u128;
 
 /// Indicates the cause of a decoding failure in [`decode`](crate::decode) or
 /// [`decode_alternative`](crate::decode_alternative).
@@ -62,50 +53,68 @@ impl core::fmt::Display for DecodeError {
 }
 
 macro_rules! internal_decoder_loop_body {
-    ($offsets:ident, $uint:ty, $result:ident, $ch:ident, $i:ident) => {
-        if $ch.is_ascii_alphanumeric() {
-            $result = $result
-                .checked_mul(BASE as $uint)
-                .and_then(|x| {
-                    x.checked_add(($ch & 0b0001_1111).wrapping_add(
-                        $offsets.wrapping_shr(
-                            ($ch.wrapping_shr(2) & 0b0001_1000) as ::core::primitive::u32,
-                        ) as ::core::primitive::u8,
-                    ) as $uint)
-                })
-                .ok_or($crate::DecodeError::ArithmeticOverflow)?
-        } else {
-            return Err($crate::DecodeError::InvalidBase62Byte($ch, $i));
+    ($block_start_values:expr, $uint:ty, $result:ident, $ch:ident, $i:ident) => {
+        let mut ch: u8 = $ch;
+
+        // The 32-character block number is which of the following blocks `$ch` starts
+        // in:
+        //     0: characters 0..=31        4: characters 128..=159
+        //     1: characters 32..=63       5: characters 160..=191
+        //     2: characters 64..=95       6: characters 192..=223
+        //     3: characters 96..=127      7: characters 224..=255
+        let block_number = (ch >> 5) as usize;
+
+        // The first valid base 62 character in each block
+        const BLOCK_START_CHARACTERS: [u8; 8] = [0, b'0', b'A', b'a', 0, 0, 0, 0];
+        // Subtract to make the first valid base 62 character in this block zero
+        ch = ch.wrapping_sub(BLOCK_START_CHARACTERS[block_number]);
+
+        // The count of valid base 62 characters in each block
+        const BLOCK_CHARACTER_COUNTS: [u8; 8] = [0, 10, 26, 26, 0, 0, 0, 0];
+        // Valid base 62 characters will now be in
+        // `0..BLOCK_CHARACTER_COUNTS[block_number]`, so return an error if this
+        // character isn't in that range
+        if ch >= BLOCK_CHARACTER_COUNTS[block_number] {
+            return Err(DecodeError::InvalidBase62Byte($ch, $i));
         }
+
+        // The base 62 value of the first valid base 62 character in each block
+        const BLOCK_START_VALUES: [u8; 8] = $block_start_values;
+        // Add the base 62 value of the first valid base 62 character in this block to
+        // get the actual base 62 value of this character
+        ch = ch.wrapping_add(BLOCK_START_VALUES[block_number]);
+
+        $result = $result
+            .checked_mul(BASE as $uint)
+            .and_then(|x| x.checked_add(ch as $uint))
+            .ok_or(DecodeError::ArithmeticOverflow)?;
     };
 }
 
 macro_rules! internal_decoder_fn {
-    ($fn_name:ident, $offsets:ident) => {
-        fn $fn_name(
-            input: &[::core::primitive::u8],
-        ) -> ::core::result::Result<::core::primitive::u128, $crate::DecodeError> {
+    ($fn_name:ident, $block_start_values:expr) => {
+        fn $fn_name(input: &[u8]) -> Result<u128, DecodeError> {
             if input.is_empty() {
-                return ::core::result::Result::Err($crate::DecodeError::EmptyInput);
+                return Result::Err(DecodeError::EmptyInput);
             }
 
             let mut result = 0_u64;
-            let mut iter = input.iter().copied().enumerate();
+            let mut iter = input.iter().map(|&ch| ch).enumerate();
             for (i, ch) in iter.by_ref().take(10) {
-                internal_decoder_loop_body!($offsets, ::core::primitive::u64, result, ch, i);
+                internal_decoder_loop_body!($block_start_values, u64, result, ch, i);
             }
 
-            let mut result = result as ::core::primitive::u128;
+            let mut result = result as u128;
             for (i, ch) in iter {
-                internal_decoder_loop_body!($offsets, ::core::primitive::u128, result, ch, i);
+                internal_decoder_loop_body!($block_start_values, u128, result, ch, i);
             }
             Ok(result)
         }
     };
 }
 
-internal_decoder_fn!(_decode, STANDARD_OFFSETS);
-internal_decoder_fn!(_decode_alternative, ALTERNATIVE_OFFSETS);
+internal_decoder_fn!(_decode, [0, 0, 10, 36, 0, 0, 0, 0]);
+internal_decoder_fn!(_decode_alternative, [0, 0, 36, 10, 0, 0, 0, 0]);
 
 /// Decodes a base62 byte slice or an equivalent, like a [`String`](alloc::string::String),
 /// using the standard digit ordering (0 to 9, then A to Z, then a to z).
@@ -177,30 +186,30 @@ pub(crate) fn digit_count(mut n: u128) -> usize {
 }
 
 macro_rules! internal_encoder_fn {
-    ($fn_name:ident, $numeric_offset:literal, $first_letters_offset:literal, $last_letters_offset:literal) => {
+    ($fn_name:ident, $numeric_offset:expr, $first_letters_offset:expr, $last_letters_offset:expr) => {
         /// # Safety
         ///
         /// With this function, `buf` MUST ALREADY have its capacity extended
         /// to hold all the new base62 characters that will be added
-        unsafe fn $fn_name(
-            mut num: ::core::primitive::u128,
-            digits: ::core::primitive::usize,
-            buf: &mut ::alloc::string::String,
-        ) {
+        unsafe fn $fn_name(mut num: u128, digits: usize, buf: &mut String) {
+            const NUMERIC_OFFSET: u8 = $numeric_offset;
+            const FIRST_LETTERS_OFFSET: u8 = $first_letters_offset - 10;
+            const LAST_LETTERS_OFFSET: u8 = $last_letters_offset - 10 - 26;
+
             let buf_vec = buf.as_mut_vec();
             let new_len = buf_vec.len().wrapping_add(digits);
             let mut ptr = buf_vec.as_mut_ptr().add(new_len).sub(1);
 
             let mut digit_index = 0_usize;
-            let mut u64_num = (num % $crate::BASE_TO_10) as ::core::primitive::u64;
-            num /= $crate::BASE_TO_10;
+            let mut u64_num = (num % BASE_TO_10) as u64;
+            num /= BASE_TO_10;
             loop {
-                ::core::ptr::write(ptr, {
-                    let digit = (u64_num % $crate::BASE) as ::core::primitive::u8;
+                core::ptr::write(ptr, {
+                    let digit = (u64_num % BASE) as u8;
                     match digit {
-                        0..=9 => digit.wrapping_add($numeric_offset),
-                        10..=35 => digit.wrapping_add($first_letters_offset),
-                        _ => digit.wrapping_add($last_letters_offset),
+                        0..=9 => digit.wrapping_add(NUMERIC_OFFSET),
+                        10..=35 => digit.wrapping_add(FIRST_LETTERS_OFFSET),
+                        _ => digit.wrapping_add(LAST_LETTERS_OFFSET),
                     }
                 });
                 ptr = ptr.sub(1);
@@ -209,11 +218,11 @@ macro_rules! internal_encoder_fn {
                 match digit_index {
                     _ if digit_index == digits => break,
                     10 => {
-                        u64_num = (num % $crate::BASE_TO_10) as ::core::primitive::u64;
-                        num /= $crate::BASE_TO_10;
+                        u64_num = (num % BASE_TO_10) as u64;
+                        num /= BASE_TO_10;
                     }
-                    20 => u64_num = num as ::core::primitive::u64,
-                    _ => u64_num /= $crate::BASE,
+                    20 => u64_num = num as u64,
+                    _ => u64_num /= BASE,
                 }
             }
 
@@ -226,8 +235,8 @@ macro_rules! internal_encoder_fn {
 //
 // With these functions, `buf` MUST ALREADY have its capacity extended
 // to hold all the new base62 characters that will be added
-internal_encoder_fn!(_encode_buf, 48, 55, 61);
-internal_encoder_fn!(_encode_alternative_buf, 48, 87, 29);
+internal_encoder_fn!(_encode_buf, b'0', b'A', b'a');
+internal_encoder_fn!(_encode_alternative_buf, b'0', b'a', b'A');
 
 /// Encodes an unsigned integer into base62, using the standard digit ordering
 /// (0 to 9, then A to Z, then a to z), and returns the resulting
