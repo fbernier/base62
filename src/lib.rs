@@ -13,33 +13,41 @@ use alloc::string::String;
 
 const BASE: u64 = 62;
 const BASE_TO_2: u64 = BASE * BASE;
-const BASE_TO_3: u64 = BASE_TO_2 * BASE;
-const BASE_TO_6: u64 = BASE_TO_3 * BASE_TO_3;
-const BASE_TO_10: u128 = BASE_TO_6 as u128 * BASE_TO_2 as u128 * BASE_TO_2 as u128;
+const BASE_TO_3: u64 = BASE * BASE * BASE;
+const BASE_TO_6: u64 = BASE * BASE * BASE * BASE * BASE * BASE;
+const BASE_TO_10: u128 = (BASE_TO_6 * BASE * BASE * BASE * BASE) as u128;
 const BASE_TO_11: u128 = BASE_TO_10 * BASE as u128;
 
-const BASE_POWERS: [(u128, u128); 22] = {
-    let mut result: [(u128, u128); 22] = [(1, 1); 22];
-
-    let mut a = 1;
-    let mut b = 1;
-
-    let mut i = 10;
-    while i < 20 {
-        a *= 62;
-        result[i] = (a, b);
-        i += 1;
-    }
-
-    while i < 22 {
-        a *= 62;
-        b *= 62;
-        result[i] = (a, b);
-        i += 1;
-    }
-
-    result
-};
+const BASE_POWERS: [(u128, u128); 22] = [
+    (1, 1),
+    (1, 1),
+    (1, 1),
+    (1, 1),
+    (1, 1),
+    (1, 1),
+    (1, 1),
+    (1, 1),
+    (1, 1),
+    (1, 1),
+    (BASE as u128, 1),
+    ((BASE * BASE) as u128, 1),
+    ((BASE * BASE * BASE) as u128, 1),
+    ((BASE * BASE * BASE * BASE) as u128, 1),
+    ((BASE * BASE * BASE * BASE * BASE) as u128, 1),
+    ((BASE * BASE * BASE * BASE * BASE * BASE) as u128, 1),
+    ((BASE * BASE * BASE * BASE * BASE * BASE * BASE) as u128, 1),
+    (
+        (BASE * BASE * BASE * BASE * BASE * BASE * BASE * BASE) as u128,
+        1,
+    ),
+    (
+        (BASE * BASE * BASE * BASE * BASE * BASE * BASE * BASE * BASE) as u128,
+        1,
+    ),
+    (BASE_TO_10, 1),
+    (BASE_TO_10 * BASE as u128, BASE as u128),
+    (BASE_TO_10 * (BASE * BASE) as u128, (BASE * BASE) as u128),
+];
 
 /// Indicates the cause of a decoding failure in [`decode`](crate::decode) or
 /// [`decode_alternative`](crate::decode_alternative).
