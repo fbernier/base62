@@ -150,9 +150,10 @@ macro_rules! internal_decoder_fn {
             }
             let result_c = result_c as u128;
 
-            Ok(result_a
+            let result = result_a
                 .checked_add(result_b.wrapping_add(result_c))
-                .ok_or(DecodeError::ArithmeticOverflow)?)
+                .ok_or(DecodeError::ArithmeticOverflow)?;
+            Ok(result)
         }
     };
 }
