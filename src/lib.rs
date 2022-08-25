@@ -121,7 +121,7 @@ macro_rules! internal_decoder_fn {
             }
 
             // Remove leading zeroes
-            while let Option::Some(b'0') = input.get(0) {
+            while let Option::Some(b'0') = input.first() {
                 input = &input[1..];
             }
             match input.len() {
