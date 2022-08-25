@@ -13,9 +13,9 @@ use alloc::string::String;
 
 const BASE: u64 = 62;
 const BASE_TO_2: u64 = BASE * BASE;
-const BASE_TO_3: u64 = BASE * BASE * BASE;
-const BASE_TO_6: u64 = BASE * BASE * BASE * BASE * BASE * BASE;
-const BASE_TO_10: u128 = (BASE_TO_6 * BASE * BASE * BASE * BASE) as u128;
+const BASE_TO_3: u64 = BASE_TO_2 * BASE;
+const BASE_TO_6: u64 = BASE_TO_3 * BASE_TO_3;
+const BASE_TO_10: u128 = (BASE_TO_6 * BASE_TO_3 * BASE) as u128;
 const BASE_TO_11: u128 = BASE_TO_10 * BASE as u128;
 
 const BASE_POWERS: [(u128, u128); 22] = [
@@ -30,23 +30,17 @@ const BASE_POWERS: [(u128, u128); 22] = [
     (1, 1),
     (1, 1),
     (BASE as u128, 1),
-    ((BASE * BASE) as u128, 1),
-    ((BASE * BASE * BASE) as u128, 1),
-    ((BASE * BASE * BASE * BASE) as u128, 1),
-    ((BASE * BASE * BASE * BASE * BASE) as u128, 1),
-    ((BASE * BASE * BASE * BASE * BASE * BASE) as u128, 1),
-    ((BASE * BASE * BASE * BASE * BASE * BASE * BASE) as u128, 1),
-    (
-        (BASE * BASE * BASE * BASE * BASE * BASE * BASE * BASE) as u128,
-        1,
-    ),
-    (
-        (BASE * BASE * BASE * BASE * BASE * BASE * BASE * BASE * BASE) as u128,
-        1,
-    ),
+    (BASE_TO_2 as u128, 1),
+    (BASE_TO_3 as u128, 1),
+    ((BASE_TO_2 * BASE_TO_2) as u128, 1),
+    ((BASE_TO_2 * BASE_TO_3) as u128, 1),
+    (BASE_TO_6 as u128, 1),
+    ((BASE_TO_6 * BASE) as u128, 1),
+    ((BASE_TO_6 * BASE_TO_2) as u128, 1),
+    ((BASE_TO_6 * BASE_TO_3) as u128, 1),
     (BASE_TO_10, 1),
     (BASE_TO_10 * BASE as u128, BASE as u128),
-    (BASE_TO_10 * (BASE * BASE) as u128, (BASE * BASE) as u128),
+    (BASE_TO_10 * BASE_TO_2 as u128, BASE_TO_2 as u128),
 ];
 
 /// Indicates the cause of a decoding failure in [`decode`](crate::decode) or
@@ -106,7 +100,7 @@ macro_rules! internal_decoder_loop_body {
         // `0..BLOCK_CHARACTER_COUNTS[block_number]`, so return an error if this
         // character isn't in that range
         if ch >= BLOCK_CHARACTER_COUNTS[block_number] {
-            return Err(DecodeError::InvalidBase62Byte($ch, $i));
+            return Result::Err(DecodeError::InvalidBase62Byte($ch, $i));
         }
 
         // The base 62 value of the first valid base 62 character in each block
@@ -121,39 +115,58 @@ macro_rules! internal_decoder_loop_body {
 
 macro_rules! internal_decoder_fn {
     ($fn_name:ident, $block_start_values:expr) => {
-        fn $fn_name(input: &[u8]) -> Result<u128, DecodeError> {
+        fn $fn_name(mut input: &[u8]) -> Result<u128, DecodeError> {
             if input.is_empty() {
                 return Result::Err(DecodeError::EmptyInput);
             }
 
-            let &(a_power, b_power) = unsafe { BASE_POWERS.get_unchecked(input.len() - 1) };
-
-            let mut iter = input.iter().map(|&ch| ch).enumerate();
-
-            let mut result_a = 0_u64;
-            for (i, ch) in iter.by_ref().take(10) {
-                internal_decoder_loop_body!($block_start_values, result_a, ch, i);
+            // Remove leading zeroes
+            while let Option::Some(b'0') = input.get(0) {
+                input = &input[1..];
             }
-            let result_a = (result_a as u128)
-                .checked_mul(a_power)
-                .ok_or(DecodeError::ArithmeticOverflow)?;
+            match input.len() {
+                0 => Result::Ok(0),
+                1..=22 => {
+                    let &(a_power, b_power) =
+                        unsafe { BASE_POWERS.get_unchecked(input.len().wrapping_sub(1)) };
 
-            let mut result_b = 0_u64;
-            for (i, ch) in iter.by_ref().take(10) {
-                internal_decoder_loop_body!($block_start_values, result_b, ch, i);
+                    let mut iter = input.iter().map(|&ch| ch).enumerate();
+
+                    let mut result_a = 0_u64;
+                    for (i, ch) in iter.by_ref().take(10) {
+                        internal_decoder_loop_body!($block_start_values, result_a, ch, i);
+                    }
+                    let result_a = (result_a as u128)
+                        .checked_mul(a_power)
+                        .ok_or(DecodeError::ArithmeticOverflow)?;
+
+                    let mut result_b = 0_u64;
+                    for (i, ch) in iter.by_ref().take(10) {
+                        internal_decoder_loop_body!($block_start_values, result_b, ch, i);
+                    }
+                    let result_b = (result_b as u128).wrapping_mul(b_power);
+
+                    let mut result_c = 0_u64;
+                    for (i, ch) in iter {
+                        internal_decoder_loop_body!($block_start_values, result_c, ch, i);
+                    }
+                    let result_c = result_c as u128;
+
+                    let result = result_a
+                        .checked_add(result_b.wrapping_add(result_c))
+                        .ok_or(DecodeError::ArithmeticOverflow)?;
+                    Result::Ok(result)
+                }
+                _ => {
+                    return Result::Err(
+                        input
+                            .iter()
+                            .position(|b| !b.is_ascii_alphanumeric())
+                            .map(|i| DecodeError::InvalidBase62Byte(input[i], i))
+                            .unwrap_or(DecodeError::ArithmeticOverflow),
+                    );
+                }
             }
-            let result_b = (result_b as u128).wrapping_mul(b_power);
-
-            let mut result_c = 0_u64;
-            for (i, ch) in iter {
-                internal_decoder_loop_body!($block_start_values, result_c, ch, i);
-            }
-            let result_c = result_c as u128;
-
-            let result = result_a
-                .checked_add(result_b.wrapping_add(result_c))
-                .ok_or(DecodeError::ArithmeticOverflow)?;
-            Ok(result)
         }
     };
 }
@@ -579,6 +592,12 @@ mod tests {
 
     #[test]
     fn test_decode() {
+        // Test leading zeroes handling
+        assert_eq!(
+            decode("00001000000000000000000000"),
+            Ok((BASE as u128).pow(21))
+        );
+
         // Test numeric type boundaries
         assert_eq!(decode("7n42DGM5Tflk9n8mt7Fhc7"), Ok(u128::MAX));
         assert_eq!(decode("LygHa16AHYG"), Ok(u64::MAX as u128 + 1));
@@ -610,6 +629,10 @@ mod tests {
     #[test]
     fn test_decode_overflow() {
         assert_eq!(
+            decode("10000000000000000000000"),
+            Err(DecodeError::ArithmeticOverflow)
+        );
+        assert_eq!(
             decode("7n42DGM5Tflk9n8mt7Fhc78"),
             Err(DecodeError::ArithmeticOverflow)
         );
@@ -630,6 +653,12 @@ mod tests {
 
     #[test]
     fn test_decode_alternative() {
+        // Test leading zeroes handling
+        assert_eq!(
+            decode_alternative("00001000000000000000000000"),
+            Ok((BASE as u128).pow(21))
+        );
+
         // Test numeric type boundaries
         assert_eq!(decode_alternative("7N42dgm5tFLK9N8MT7fHC7"), Ok(u128::MAX));
         assert_eq!(decode_alternative("lYGhA16ahyg"), Ok(u64::MAX as u128 + 1));
@@ -660,6 +689,10 @@ mod tests {
 
     #[test]
     fn test_decode_alternative_overflow() {
+        assert_eq!(
+            decode_alternative("10000000000000000000000"),
+            Err(DecodeError::ArithmeticOverflow)
+        );
         assert_eq!(
             decode_alternative("7N42dgm5tFLK9N8MT7fHC8"),
             Err(DecodeError::ArithmeticOverflow)
