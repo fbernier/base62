@@ -18,7 +18,8 @@ const BASE_TO_6: u64 = BASE_TO_3 * BASE_TO_3;
 const BASE_TO_10: u128 = (BASE_TO_6 * BASE_TO_3 * BASE) as u128;
 const BASE_TO_11: u128 = BASE_TO_10 * BASE as u128;
 
-const BASE_POWERS: [(u128, u128); 22] = [
+const BASE_POWERS: [(u128, u128); 23] = [
+    (0, 0),
     (1, 1),
     (1, 1),
     (1, 1),
@@ -126,9 +127,9 @@ macro_rules! internal_decoder_fn {
                 input = &input[1..];
                 chopped_count += 1;
             }
-            if input.len() <= 22 {
-                let &(a_power, b_power) =
-                    unsafe { BASE_POWERS.get_unchecked(input.len().wrapping_sub(1)) };
+            let input_len = input.len();
+            if input_len <= 22 {
+                let (a_power, b_power) = BASE_POWERS[input_len];
 
                 let mut iter = (chopped_count..).zip(input.iter().map(|&ch| ch));
 
