@@ -7,7 +7,7 @@ encoding to and decoding from [base62](https://en.wikipedia.org/wiki/Base62).
 [![Docs](https://docs.rs/base62/badge.svg)](https://docs.rs/base62)
 */
 
-//#![no_std]
+#![no_std]
 extern crate alloc;
 use alloc::string::String;
 
