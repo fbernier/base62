@@ -23,6 +23,15 @@ const BASE_TO_9: u64 = BASE_TO_8 * BASE;
 const BASE_TO_10: u128 = (BASE_TO_9 * BASE) as u128;
 const BASE_TO_11: u128 = BASE_TO_10 * BASE as u128;
 const BASE_TO_12: u128 = BASE_TO_11 * BASE as u128;
+const BASE_TO_13: u128 = BASE_TO_12 * BASE as u128;
+const BASE_TO_14: u128 = BASE_TO_13 * BASE as u128;
+const BASE_TO_15: u128 = BASE_TO_14 * BASE as u128;
+const BASE_TO_16: u128 = BASE_TO_15 * BASE as u128;
+const BASE_TO_17: u128 = BASE_TO_16 * BASE as u128;
+const BASE_TO_18: u128 = BASE_TO_17 * BASE as u128;
+const BASE_TO_19: u128 = BASE_TO_18 * BASE as u128;
+const BASE_TO_20: u128 = BASE_TO_19 * BASE as u128;
+const BASE_TO_21: u128 = BASE_TO_20 * BASE as u128;
 
 /// Indicates the cause of a decoding failure in [`decode`](crate::decode) or
 /// [`decode_alternative`](crate::decode_alternative).
@@ -60,46 +69,270 @@ impl core::fmt::Display for DecodeError {
 
 macro_rules! internal_decoder_loop_body {
     ($result:ident, $ch:ident, $i:ident, $numeric_start_value:expr, $uppercase_start_value:expr, $lowercase_start_value:expr) => {
-        let mut ch: u8 = $ch;
+        const CHARACTER_VALUES: [u8; 256] = [
+            255,
+            255,
+            255,
+            255,
+            255,
+            255,
+            255,
+            255,
+            255,
+            255,
+            255,
+            255,
+            255,
+            255,
+            255,
+            255,
+            255,
+            255,
+            255,
+            255,
+            255,
+            255,
+            255,
+            255,
+            255,
+            255,
+            255,
+            255,
+            255,
+            255,
+            255,
+            255,
+            255,
+            255,
+            255,
+            255,
+            255,
+            255,
+            255,
+            255,
+            255,
+            255,
+            255,
+            255,
+            255,
+            255,
+            255,
+            255,
+            $numeric_start_value + 0,
+            $numeric_start_value + 1,
+            $numeric_start_value + 2,
+            $numeric_start_value + 3,
+            $numeric_start_value + 4,
+            $numeric_start_value + 5,
+            $numeric_start_value + 6,
+            $numeric_start_value + 7,
+            $numeric_start_value + 8,
+            $numeric_start_value + 9,
+            255,
+            255,
+            255,
+            255,
+            255,
+            255,
+            255,
+            $uppercase_start_value + 0,
+            $uppercase_start_value + 1,
+            $uppercase_start_value + 2,
+            $uppercase_start_value + 3,
+            $uppercase_start_value + 4,
+            $uppercase_start_value + 5,
+            $uppercase_start_value + 6,
+            $uppercase_start_value + 7,
+            $uppercase_start_value + 8,
+            $uppercase_start_value + 9,
+            $uppercase_start_value + 10,
+            $uppercase_start_value + 11,
+            $uppercase_start_value + 12,
+            $uppercase_start_value + 13,
+            $uppercase_start_value + 14,
+            $uppercase_start_value + 15,
+            $uppercase_start_value + 16,
+            $uppercase_start_value + 17,
+            $uppercase_start_value + 18,
+            $uppercase_start_value + 19,
+            $uppercase_start_value + 20,
+            $uppercase_start_value + 21,
+            $uppercase_start_value + 22,
+            $uppercase_start_value + 23,
+            $uppercase_start_value + 24,
+            $uppercase_start_value + 25,
+            255,
+            255,
+            255,
+            255,
+            255,
+            255,
+            $lowercase_start_value + 0,
+            $lowercase_start_value + 1,
+            $lowercase_start_value + 2,
+            $lowercase_start_value + 3,
+            $lowercase_start_value + 4,
+            $lowercase_start_value + 5,
+            $lowercase_start_value + 6,
+            $lowercase_start_value + 7,
+            $lowercase_start_value + 8,
+            $lowercase_start_value + 9,
+            $lowercase_start_value + 10,
+            $lowercase_start_value + 11,
+            $lowercase_start_value + 12,
+            $lowercase_start_value + 13,
+            $lowercase_start_value + 14,
+            $lowercase_start_value + 15,
+            $lowercase_start_value + 16,
+            $lowercase_start_value + 17,
+            $lowercase_start_value + 18,
+            $lowercase_start_value + 19,
+            $lowercase_start_value + 20,
+            $lowercase_start_value + 21,
+            $lowercase_start_value + 22,
+            $lowercase_start_value + 23,
+            $lowercase_start_value + 24,
+            $lowercase_start_value + 25,
+            255,
+            255,
+            255,
+            255,
+            255,
+            255,
+            255,
+            255,
+            255,
+            255,
+            255,
+            255,
+            255,
+            255,
+            255,
+            255,
+            255,
+            255,
+            255,
+            255,
+            255,
+            255,
+            255,
+            255,
+            255,
+            255,
+            255,
+            255,
+            255,
+            255,
+            255,
+            255,
+            255,
+            255,
+            255,
+            255,
+            255,
+            255,
+            255,
+            255,
+            255,
+            255,
+            255,
+            255,
+            255,
+            255,
+            255,
+            255,
+            255,
+            255,
+            255,
+            255,
+            255,
+            255,
+            255,
+            255,
+            255,
+            255,
+            255,
+            255,
+            255,
+            255,
+            255,
+            255,
+            255,
+            255,
+            255,
+            255,
+            255,
+            255,
+            255,
+            255,
+            255,
+            255,
+            255,
+            255,
+            255,
+            255,
+            255,
+            255,
+            255,
+            255,
+            255,
+            255,
+            255,
+            255,
+            255,
+            255,
+            255,
+            255,
+            255,
+            255,
+            255,
+            255,
+            255,
+            255,
+            255,
+            255,
+            255,
+            255,
+            255,
+            255,
+            255,
+            255,
+            255,
+            255,
+            255,
+            255,
+            255,
+            255,
+            255,
+            255,
+            255,
+            255,
+            255,
+            255,
+            255,
+            255,
+            255,
+            255,
+            255,
+            255,
+            255,
+            255,
+            255,
+            255,
+            255,
+            255,
+            255,
+            255,
+            255,
+            255,
+            255,
+        ];
 
-        // The 32-character block number is which of the following blocks `$ch` starts
-        // in:
-        //     0: characters 0..=31        4: characters 128..=159
-        //     1: characters 32..=63       5: characters 160..=191
-        //     2: characters 64..=95       6: characters 192..=223
-        //     3: characters 96..=127      7: characters 224..=255
-        let block_number = (ch >> 5) as usize;
-
-        // The first valid base 62 character in each block
-        const BLOCK_START_CHARACTERS: [u8; 8] = [0, b'0', b'A', b'a', 0, 0, 0, 0];
-        // Subtract to make the first valid base 62 character in this block zero
-        ch = ch.wrapping_sub(BLOCK_START_CHARACTERS[block_number]);
-
-        // The count of valid base 62 characters in each block
-        const BLOCK_CHARACTER_COUNTS: [u8; 8] = [0, 10, 26, 26, 0, 0, 0, 0];
-        // Valid base 62 characters will now be in
-        // `0..BLOCK_CHARACTER_COUNTS[block_number]`, so return an error if this
-        // character isn't in that range
-        if ch >= BLOCK_CHARACTER_COUNTS[block_number] {
+        let char_value = *unsafe { CHARACTER_VALUES.get_unchecked($ch as usize) };
+        if char_value == 255 {
             return Result::Err(DecodeError::InvalidBase62Byte($ch, $i));
         }
-
-        // The base 62 value of the first valid base 62 character in each block
-        const BLOCK_START_VALUES: [u8; 8] = [
-            0,
-            $numeric_start_value,
-            $uppercase_start_value,
-            $lowercase_start_value,
-            0,
-            0,
-            0,
-            0,
-        ];
-        // Add the base 62 value of the first valid base 62 character in this block to
-        // get the actual base 62 value of this character
-        ch = ch.wrapping_add(BLOCK_START_VALUES[block_number]);
-
-        $result = $result.wrapping_mul(BASE).wrapping_add(ch as u64);
+        $result = $result.wrapping_mul(BASE).wrapping_add(char_value as u64);
     };
 }
 
@@ -251,33 +484,36 @@ pub fn decode_alternative<T: AsRef<[u8]>>(input: T) -> Result<u128, DecodeError>
 }
 
 // Finds out how many base62 digits a value encodes into.
-pub(crate) fn digit_count(mut n: u128) -> usize {
-    let mut result = 1;
+pub(crate) fn digit_count(n: u128) -> usize {
+    const POWERS: [u128; 22] = [
+        0,
+        BASE as u128,
+        BASE_TO_2 as u128,
+        BASE_TO_3 as u128,
+        BASE_TO_4 as u128,
+        BASE_TO_5 as u128,
+        BASE_TO_6 as u128,
+        BASE_TO_7 as u128,
+        BASE_TO_8 as u128,
+        BASE_TO_9 as u128,
+        BASE_TO_10,
+        BASE_TO_11,
+        BASE_TO_12,
+        BASE_TO_13,
+        BASE_TO_14,
+        BASE_TO_15,
+        BASE_TO_16,
+        BASE_TO_17,
+        BASE_TO_18,
+        BASE_TO_19,
+        BASE_TO_20,
+        BASE_TO_21,
+    ];
 
-    if n >= BASE_TO_11 {
-        result += 11;
-        n /= BASE_TO_11;
+    match POWERS.binary_search(&n) {
+        Ok(n) => n.wrapping_add(1),
+        Err(n) => n,
     }
-    if n >= BASE_TO_10 {
-        return result + 10;
-    }
-    let mut n = n as u64;
-    if n >= BASE_TO_6 {
-        result += 6;
-        n /= BASE_TO_6;
-    }
-    if n >= BASE_TO_3 {
-        result += 3;
-        n /= BASE_TO_3;
-    }
-    if n >= BASE_TO_2 {
-        return result + 2;
-    }
-    if n >= BASE {
-        return result + 1;
-    }
-
-    result
 }
 
 macro_rules! internal_encoder_fn {
@@ -287,10 +523,6 @@ macro_rules! internal_encoder_fn {
         /// With this function, `buf` MUST ALREADY have its capacity extended
         /// to hold all the new base62 characters that will be added
         unsafe fn $fn_name(mut num: u128, digits: usize, buf: &mut String) {
-            const NUMERIC_OFFSET: u8 = $numeric_offset;
-            const FIRST_LETTERS_OFFSET: u8 = $first_letters_offset - 10;
-            const LAST_LETTERS_OFFSET: u8 = $last_letters_offset - 10 - 26;
-
             let buf_vec = buf.as_mut_vec();
             let new_len = buf_vec.len().wrapping_add(digits);
             let mut ptr = buf_vec.as_mut_ptr().add(new_len).sub(1);
@@ -299,14 +531,74 @@ macro_rules! internal_encoder_fn {
             let mut u64_num = (num % BASE_TO_10) as u64;
             num /= BASE_TO_10;
             loop {
-                core::ptr::write(ptr, {
-                    let digit = (u64_num % BASE) as u8;
-                    match digit {
-                        0..=9 => digit.wrapping_add(NUMERIC_OFFSET),
-                        10..=35 => digit.wrapping_add(FIRST_LETTERS_OFFSET),
-                        _ => digit.wrapping_add(LAST_LETTERS_OFFSET),
-                    }
-                });
+                const VALUE_CHARACTERS: [u8; 62] = [
+                    $numeric_offset,
+                    $numeric_offset + 1,
+                    $numeric_offset + 2,
+                    $numeric_offset + 3,
+                    $numeric_offset + 4,
+                    $numeric_offset + 5,
+                    $numeric_offset + 6,
+                    $numeric_offset + 7,
+                    $numeric_offset + 8,
+                    $numeric_offset + 9,
+                    $first_letters_offset,
+                    $first_letters_offset + 1,
+                    $first_letters_offset + 2,
+                    $first_letters_offset + 3,
+                    $first_letters_offset + 4,
+                    $first_letters_offset + 5,
+                    $first_letters_offset + 6,
+                    $first_letters_offset + 7,
+                    $first_letters_offset + 8,
+                    $first_letters_offset + 9,
+                    $first_letters_offset + 10,
+                    $first_letters_offset + 11,
+                    $first_letters_offset + 12,
+                    $first_letters_offset + 13,
+                    $first_letters_offset + 14,
+                    $first_letters_offset + 15,
+                    $first_letters_offset + 16,
+                    $first_letters_offset + 17,
+                    $first_letters_offset + 18,
+                    $first_letters_offset + 19,
+                    $first_letters_offset + 20,
+                    $first_letters_offset + 21,
+                    $first_letters_offset + 22,
+                    $first_letters_offset + 23,
+                    $first_letters_offset + 24,
+                    $first_letters_offset + 25,
+                    $last_letters_offset,
+                    $last_letters_offset + 1,
+                    $last_letters_offset + 2,
+                    $last_letters_offset + 3,
+                    $last_letters_offset + 4,
+                    $last_letters_offset + 5,
+                    $last_letters_offset + 6,
+                    $last_letters_offset + 7,
+                    $last_letters_offset + 8,
+                    $last_letters_offset + 9,
+                    $last_letters_offset + 10,
+                    $last_letters_offset + 11,
+                    $last_letters_offset + 12,
+                    $last_letters_offset + 13,
+                    $last_letters_offset + 14,
+                    $last_letters_offset + 15,
+                    $last_letters_offset + 16,
+                    $last_letters_offset + 17,
+                    $last_letters_offset + 18,
+                    $last_letters_offset + 19,
+                    $last_letters_offset + 20,
+                    $last_letters_offset + 21,
+                    $last_letters_offset + 22,
+                    $last_letters_offset + 23,
+                    $last_letters_offset + 24,
+                    $last_letters_offset + 25,
+                ];
+                core::ptr::write(
+                    ptr,
+                    *VALUE_CHARACTERS.get_unchecked((u64_num % BASE) as usize),
+                );
                 ptr = ptr.sub(1);
 
                 digit_index = digit_index.wrapping_add(1);
