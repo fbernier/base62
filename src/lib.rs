@@ -14,35 +14,15 @@ use alloc::string::String;
 const BASE: u64 = 62;
 const BASE_TO_2: u64 = BASE * BASE;
 const BASE_TO_3: u64 = BASE_TO_2 * BASE;
-const BASE_TO_6: u64 = BASE_TO_3 * BASE_TO_3;
-const BASE_TO_10: u128 = (BASE_TO_6 * BASE_TO_3 * BASE) as u128;
+const BASE_TO_4: u64 = BASE_TO_3 * BASE;
+const BASE_TO_5: u64 = BASE_TO_4 * BASE;
+const BASE_TO_6: u64 = BASE_TO_5 * BASE;
+const BASE_TO_7: u64 = BASE_TO_6 * BASE;
+const BASE_TO_8: u64 = BASE_TO_7 * BASE;
+const BASE_TO_9: u64 = BASE_TO_8 * BASE;
+const BASE_TO_10: u128 = (BASE_TO_9 * BASE) as u128;
 const BASE_TO_11: u128 = BASE_TO_10 * BASE as u128;
-
-const BASE_POWERS: [(u128, u128); 23] = [
-    (0, 0),
-    (1, 1),
-    (1, 1),
-    (1, 1),
-    (1, 1),
-    (1, 1),
-    (1, 1),
-    (1, 1),
-    (1, 1),
-    (1, 1),
-    (1, 1),
-    (BASE as u128, 1),
-    (BASE_TO_2 as u128, 1),
-    (BASE_TO_3 as u128, 1),
-    ((BASE_TO_2 * BASE_TO_2) as u128, 1),
-    ((BASE_TO_2 * BASE_TO_3) as u128, 1),
-    (BASE_TO_6 as u128, 1),
-    ((BASE_TO_6 * BASE) as u128, 1),
-    ((BASE_TO_6 * BASE_TO_2) as u128, 1),
-    ((BASE_TO_6 * BASE_TO_3) as u128, 1),
-    (BASE_TO_10, 1),
-    (BASE_TO_10 * BASE as u128, BASE as u128),
-    (BASE_TO_10 * BASE_TO_2 as u128, BASE_TO_2 as u128),
-];
+const BASE_TO_12: u128 = BASE_TO_11 * BASE as u128;
 
 /// Indicates the cause of a decoding failure in [`decode`](crate::decode) or
 /// [`decode_alternative`](crate::decode_alternative).
@@ -79,7 +59,7 @@ impl core::fmt::Display for DecodeError {
 }
 
 macro_rules! internal_decoder_loop_body {
-    ($block_start_values:expr, $result:ident, $ch:ident, $i:ident) => {
+    ($result:ident, $ch:ident, $i:ident, $numeric_start_value:expr, $uppercase_start_value:expr, $lowercase_start_value:expr) => {
         let mut ch: u8 = $ch;
 
         // The 32-character block number is which of the following blocks `$ch` starts
@@ -105,7 +85,16 @@ macro_rules! internal_decoder_loop_body {
         }
 
         // The base 62 value of the first valid base 62 character in each block
-        const BLOCK_START_VALUES: [u8; 8] = $block_start_values;
+        const BLOCK_START_VALUES: [u8; 8] = [
+            0,
+            $numeric_start_value,
+            $uppercase_start_value,
+            $lowercase_start_value,
+            0,
+            0,
+            0,
+            0,
+        ];
         // Add the base 62 value of the first valid base 62 character in this block to
         // get the actual base 62 value of this character
         ch = ch.wrapping_add(BLOCK_START_VALUES[block_number]);
@@ -115,7 +104,7 @@ macro_rules! internal_decoder_loop_body {
 }
 
 macro_rules! internal_decoder_fn {
-    ($fn_name:ident, $block_start_values:expr) => {
+    ($fn_name:ident, $numeric_start_value:expr, $uppercase_start_value:expr, $lowercase_start_value:expr) => {
         fn $fn_name(mut input: &[u8]) -> Result<u128, DecodeError> {
             if input.is_empty() {
                 return Result::Err(DecodeError::EmptyInput);
@@ -129,13 +118,46 @@ macro_rules! internal_decoder_fn {
             }
             let input_len = input.len();
             if input_len <= 22 {
-                let (a_power, b_power) = BASE_POWERS[input_len];
+                const MULTIPLIERS: [(u128, u64); 23] = [
+                    (0, 0),
+                    (1, 1),
+                    (1, 1),
+                    (1, 1),
+                    (1, 1),
+                    (1, 1),
+                    (1, 1),
+                    (1, 1),
+                    (1, 1),
+                    (1, 1),
+                    (1, 1),
+                    (BASE as u128, 1),
+                    (BASE_TO_2 as u128, 1),
+                    (BASE_TO_3 as u128, 1),
+                    (BASE_TO_4 as u128, 1),
+                    (BASE_TO_5 as u128, 1),
+                    (BASE_TO_6 as u128, 1),
+                    (BASE_TO_7 as u128, 1),
+                    (BASE_TO_8 as u128, 1),
+                    (BASE_TO_9 as u128, 1),
+                    (BASE_TO_10, 1),
+                    (BASE_TO_11, BASE),
+                    (BASE_TO_12, BASE_TO_2),
+                ];
+
+                let (a_power, b_power) = MULTIPLIERS[input_len];
 
                 let mut iter = (chopped_count..).zip(input.iter().map(|&ch| ch));
 
                 let mut result_a = 0_u64;
                 for (i, ch) in iter.by_ref().take(10) {
-                    internal_decoder_loop_body!($block_start_values, result_a, ch, i);
+                    internal_decoder_loop_body!(
+                        result_a,
+                        ch,
+                        i,
+                        $numeric_start_value,
+                        $uppercase_start_value,
+                        $lowercase_start_value
+                    );
                 }
                 let result_a = (result_a as u128)
                     .checked_mul(a_power)
@@ -143,13 +165,27 @@ macro_rules! internal_decoder_fn {
 
                 let mut result_b = 0_u64;
                 for (i, ch) in iter.by_ref().take(10) {
-                    internal_decoder_loop_body!($block_start_values, result_b, ch, i);
+                    internal_decoder_loop_body!(
+                        result_b,
+                        ch,
+                        i,
+                        $numeric_start_value,
+                        $uppercase_start_value,
+                        $lowercase_start_value
+                    );
                 }
-                let result_b = (result_b as u128).wrapping_mul(b_power);
+                let result_b = (result_b as u128).wrapping_mul(b_power as u128);
 
                 let mut result_c = 0_u64;
                 for (i, ch) in iter {
-                    internal_decoder_loop_body!($block_start_values, result_c, ch, i);
+                    internal_decoder_loop_body!(
+                        result_c,
+                        ch,
+                        i,
+                        $numeric_start_value,
+                        $uppercase_start_value,
+                        $lowercase_start_value
+                    );
                 }
                 let result_c = result_c as u128;
 
@@ -172,8 +208,8 @@ macro_rules! internal_decoder_fn {
     };
 }
 
-internal_decoder_fn!(_decode, [0, 0, 10, 36, 0, 0, 0, 0]);
-internal_decoder_fn!(_decode_alternative, [0, 0, 36, 10, 0, 0, 0, 0]);
+internal_decoder_fn!(_decode, 0, 10, 36);
+internal_decoder_fn!(_decode_alternative, 0, 36, 10);
 
 /// Decodes a base62 byte slice or an equivalent, like a [`String`](alloc::string::String),
 /// using the standard digit ordering (0 to 9, then A to Z, then a to z).
