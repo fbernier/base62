@@ -794,15 +794,36 @@ mod tests {
 
     #[test]
     fn test_decode_invalid_char() {
-        assert_eq!(
-            decode("00!00000000000000000000000"),
-            Err(DecodeError::InvalidBase62Byte(b'!', 2))
-        );
-        assert_eq!(decode("00!"), Err(DecodeError::InvalidBase62Byte(b'!', 2)));
-        assert_eq!(
-            decode("ds{Z455f"),
-            Err(DecodeError::InvalidBase62Byte(b'{', 2))
-        );
+        let mut input = Vec::with_capacity(40);
+        let mut invalid_chars = (0..b'0')
+            .chain(b'0' + 10..b'A')
+            .chain(b'A' + 26..b'a')
+            .chain(b'a' + 26..=255)
+            .cycle();
+
+        for size in [10, 22, 23, 40].iter().map(|&size| size) {
+            input.clear();
+            for _ in 0..size {
+                input.push(b'0');
+            }
+
+            for i in 0..size {
+                input[i] = b'1';
+                for j in 0..size {
+                    let invalid_char = invalid_chars.next().unwrap();
+                    input[j] = invalid_char;
+
+                    assert_eq!(
+                        decode(&input),
+                        Err(DecodeError::InvalidBase62Byte(invalid_char, j))
+                    );
+
+                    input[j] = b'0';
+                    input[i] = b'1';
+                }
+                input[i] = b'0';
+            }
+        }
     }
 
     #[test]
@@ -859,19 +880,37 @@ mod tests {
     }
 
     #[test]
-    fn test_decode_alternative_invalid_char() {
-        assert_eq!(
-            decode_alternative("00!00000000000000000000000"),
-            Err(DecodeError::InvalidBase62Byte(b'!', 2))
-        );
-        assert_eq!(
-            decode_alternative("00!"),
-            Err(DecodeError::InvalidBase62Byte(b'!', 2))
-        );
-        assert_eq!(
-            decode_alternative("ds{Z455f"),
-            Err(DecodeError::InvalidBase62Byte(b'{', 2))
-        );
+    fn test_decode_altenative_invalid_char() {
+        let mut input = Vec::with_capacity(40);
+        let mut invalid_chars = (0..b'0')
+            .chain(b'0' + 10..b'A')
+            .chain(b'A' + 26..b'a')
+            .chain(b'a' + 26..=255)
+            .cycle();
+
+        for size in [10, 22, 23, 40].iter().map(|&size| size) {
+            input.clear();
+            for _ in 0..size {
+                input.push(b'0');
+            }
+
+            for i in 0..size {
+                input[i] = b'1';
+                for j in 0..size {
+                    let invalid_char = invalid_chars.next().unwrap();
+                    input[j] = invalid_char;
+
+                    assert_eq!(
+                        decode_alternative(&input),
+                        Err(DecodeError::InvalidBase62Byte(invalid_char, j))
+                    );
+
+                    input[j] = b'0';
+                    input[i] = b'1';
+                }
+                input[i] = b'0';
+            }
+        }
     }
 
     #[test]
