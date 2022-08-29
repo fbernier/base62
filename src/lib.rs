@@ -330,7 +330,7 @@ macro_rules! internal_decoder_loop_body {
 
         let char_value = *unsafe { CHARACTER_VALUES.get_unchecked($ch as usize) };
         if char_value == 255 {
-            return Result::Err(DecodeError::InvalidBase62Byte($ch, $i));
+            return Err(DecodeError::InvalidBase62Byte($ch, $i));
         }
         $result = $result.wrapping_mul(BASE).wrapping_add(char_value as u64);
     };
@@ -340,7 +340,7 @@ macro_rules! internal_decoder_fn {
     ($fn_name:ident, $numeric_start_value:expr, $uppercase_start_value:expr, $lowercase_start_value:expr) => {
         fn $fn_name(mut input: &[u8]) -> Result<u128, DecodeError> {
             if input.is_empty() {
-                return Result::Err(DecodeError::EmptyInput);
+                return Err(DecodeError::EmptyInput);
             }
 
             // Remove leading zeroes
@@ -425,17 +425,15 @@ macro_rules! internal_decoder_fn {
                 let result = result_a
                     .checked_add(result_b.wrapping_add(result_c))
                     .ok_or(DecodeError::ArithmeticOverflow)?;
-                Result::Ok(result)
+                Ok(result)
             } else {
-                Result::Err(
-                    input
-                        .iter()
-                        .position(|b| !b.is_ascii_alphanumeric())
-                        .map(|i| {
-                            DecodeError::InvalidBase62Byte(input[i], chopped_count.wrapping_add(i))
-                        })
-                        .unwrap_or(DecodeError::ArithmeticOverflow),
-                )
+                Err(input
+                    .iter()
+                    .position(|b| !b.is_ascii_alphanumeric())
+                    .map(|i| {
+                        DecodeError::InvalidBase62Byte(input[i], chopped_count.wrapping_add(i))
+                    })
+                    .unwrap_or(DecodeError::ArithmeticOverflow))
             }
         }
     };
