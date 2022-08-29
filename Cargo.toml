@@ -1,7 +1,12 @@
 [package]
 name = "base62"
 version = "2.0.0"
-authors = ["Francois Bernier <frankbernier@gmail.com>", "Chai T. Rex <ChaiTRex@users.noreply.github.com>"]
+authors = [
+    "François Bernier <frankbernier@gmail.com>",
+    "Chai T. Rex <ChaiTRex@users.noreply.github.com>",
+    "Kevin Darlington <kevin@outroot.com>",
+    "Christopher Tarquini <code@tarq.io>",
+]
 edition = "2018"
 description = "A Base62 encoding/decoding library"
 documentation = "https://docs.rs/base62/"
@@ -15,8 +20,9 @@ exclude = [
 ]
 
 [dev-dependencies]
-quickcheck = "1"
 criterion = "0.3.5"
+quickcheck = "1"
+rand = "0.8.5"
 
 [[bench]]
 name = "base62"
