@@ -1,6 +1,6 @@
 [package]
 name = "base62"
-version = "2.0.1"
+version = "2.0.2"
 authors = [
     "François Bernier <frankbernier@gmail.com>",
     "Chai T. Rex <ChaiTRex@users.noreply.github.com>",
