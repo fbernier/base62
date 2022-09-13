@@ -20,9 +20,9 @@ exclude = [
 ]
 
 [dev-dependencies]
-criterion = "0.3.5"
+criterion = { version = "0.4", default-features = false }
 quickcheck = "1"
-rand = "0.8.5"
+rand = "0.8"
 
 [[bench]]
 name = "base62"
