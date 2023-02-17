@@ -1,6 +1,6 @@
 use base62::{
     decode, decode_alternative, /*digit_count,*/ encode, encode_alternative,
-    encode_alternative_buf, encode_buf,
+    encode_alternative_buf, encode_alternative_bytes, encode_buf, encode_bytes,
 };
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
 use rand::distributions::Standard;
@@ -39,6 +39,16 @@ pub fn criterion_benchmark(c: &mut Criterion) {
         b.iter(|| encode(black_box(random_u128s.next().unwrap())))
     });
 
+    c.bench_function("encode_standard_bytes", |b| {
+        let mut buf = [0; 22];
+        b.iter(|| encode_bytes(black_box(u128::MAX), black_box(&mut buf)))
+    });
+
+    c.bench_function("encode_standard_bytes_random", |b| {
+        let mut buf = [0; 22];
+        b.iter(|| encode_bytes(black_box(random_u128s.next().unwrap()), black_box(&mut buf)))
+    });
+
     c.bench_function("encode_standard_buf", |b| {
         b.iter(|| encode_buf(black_box(u128::MAX), black_box(&mut String::new())))
     });
@@ -58,6 +68,18 @@ pub fn criterion_benchmark(c: &mut Criterion) {
 
     c.bench_function("encode_alternative_new_random", |b| {
         b.iter(|| encode_alternative(black_box(random_u128s.next().unwrap())))
+    });
+
+    c.bench_function("encode_alternative_bytes", |b| {
+        let mut buf = [0; 22];
+        b.iter(|| encode_alternative_bytes(black_box(u128::MAX), black_box(&mut buf)))
+    });
+
+    c.bench_function("encode_alternative_bytes_random", |b| {
+        let mut buf = [0; 22];
+        b.iter(|| {
+            encode_alternative_bytes(black_box(random_u128s.next().unwrap()), black_box(&mut buf))
+        })
     });
 
     c.bench_function("encode_alternative_buf", |b| {
