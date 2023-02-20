@@ -9,7 +9,7 @@ encoding to and decoding from [base62](https://en.wikipedia.org/wiki/Base62).
 
 #![no_std]
 extern crate alloc;
-use alloc::{slice, string::String};
+use alloc::string::String;
 
 const BASE: u64 = 62;
 const BASE_TO_2: u64 = BASE * BASE;
@@ -720,11 +720,9 @@ pub fn encode_bytes<T: Into<u128>>(num: T, buf: &mut [u8]) -> Result<usize, Enco
         return Err(EncodeError::BufferTooSmall);
     }
 
-    let buf = &mut buf[..digits];
+    //let buf = &mut buf[..digits];
     unsafe {
-        let new_len = _encode_buf(num, digits, buf, WriteMode::Overwrite);
-        let slice = slice::from_raw_parts_mut(buf.as_mut_ptr(), new_len);
-        buf.swap_with_slice(&mut slice[..new_len]);
+        _encode_buf(num, digits, buf, WriteMode::Overwrite);
     }
 
     Ok(digits)
@@ -763,9 +761,7 @@ pub fn encode_alternative_bytes<T: Into<u128>>(
 
     let buf = &mut buf[..digits];
     unsafe {
-        let new_len = _encode_alternative_buf(num, digits, buf, WriteMode::Overwrite);
-        let slice = slice::from_raw_parts_mut(buf.as_mut_ptr(), new_len);
-        buf.swap_with_slice(&mut slice[..new_len]);
+        _encode_alternative_buf(num, digits, buf, WriteMode::Overwrite);
     }
 
     Ok(digits)
