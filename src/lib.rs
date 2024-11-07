@@ -33,11 +33,6 @@ const BASE_TO_19: u128 = BASE_TO_18 * BASE as u128;
 const BASE_TO_20: u128 = BASE_TO_19 * BASE as u128;
 const BASE_TO_21: u128 = BASE_TO_20 * BASE as u128;
 
-enum WriteMode {
-    Append,
-    Overwrite,
-}
-
 /// Indicates the cause of a decoding failure in [`decode`](crate::decode) or
 /// [`decode_alternative`](crate::decode_alternative).
 #[derive(Copy, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
@@ -527,22 +522,8 @@ pub(crate) fn digit_count(n: u128) -> usize {
 
 macro_rules! internal_encoder_fn {
     ($fn_name:ident, $numeric_offset:expr, $first_letters_offset:expr, $last_letters_offset:expr) => {
-        /// # Safety
-        ///
-        /// With this function, `buf` MUST ALREADY have its capacity extended
-        /// to hold all the new base62 characters that will be added
-        unsafe fn $fn_name(
-            mut num: u128,
-            digits: usize,
-            buf: &mut [u8],
-            write_mode: WriteMode,
-        ) -> usize {
-            let buf_len = match write_mode {
-                WriteMode::Append => buf.len(),
-                WriteMode::Overwrite => 0,
-            };
-            let new_len = buf_len.wrapping_add(digits);
-            let mut ptr = buf.as_mut_ptr().add(new_len).sub(1);
+        unsafe fn $fn_name(mut num: u128, digits: usize, buf: &mut [u8]) -> usize {
+            let mut write_idx = digits;
 
             let mut digit_index = 0_usize;
             let mut u64_num = (num % BASE_TO_10) as u64;
@@ -612,11 +593,10 @@ macro_rules! internal_encoder_fn {
                     $last_letters_offset + 24,
                     $last_letters_offset + 25,
                 ];
-                core::ptr::write(
-                    ptr,
-                    *VALUE_CHARACTERS.get_unchecked((u64_num % BASE) as usize),
-                );
-                ptr = ptr.sub(1);
+
+                write_idx = write_idx.wrapping_sub(1);
+                let ch = *VALUE_CHARACTERS.get_unchecked((u64_num % BASE) as usize);
+                *buf.get_unchecked_mut(write_idx) = ch;
 
                 digit_index = digit_index.wrapping_add(1);
                 match digit_index {
@@ -630,7 +610,7 @@ macro_rules! internal_encoder_fn {
                 }
             }
 
-            new_len
+            digits
         }
     };
 }
@@ -660,9 +640,9 @@ pub fn encode<T: Into<u128>>(num: T) -> String {
     let digits = digit_count(num);
     let mut buf = String::with_capacity(digits);
     unsafe {
-        let new_len = _encode_buf(num, digits, buf.as_bytes_mut(), WriteMode::Append);
-        let buf_vec = buf.as_mut_vec();
-        buf_vec.set_len(new_len);
+        buf.as_mut_vec().set_len(digits);
+        let len = _encode_buf(num, digits, buf.as_bytes_mut());
+        debug_assert_eq!(len, digits);
     }
     buf
 }
@@ -683,11 +663,12 @@ pub fn encode<T: Into<u128>>(num: T) -> String {
 pub fn encode_buf<T: Into<u128>>(num: T, buf: &mut String) {
     let num = num.into();
     let digits = digit_count(num);
+    let old_len = buf.len();
     buf.reserve(digits);
     unsafe {
-        let new_len = _encode_buf(num, digits, buf.as_bytes_mut(), WriteMode::Append);
-        let buf_vec = buf.as_mut_vec();
-        buf_vec.set_len(new_len);
+        buf.as_mut_vec().set_len(old_len + digits);
+        let len = _encode_buf(num, digits, &mut buf.as_bytes_mut()[old_len..]);
+        debug_assert_eq!(len, digits);
     }
 }
 
@@ -720,13 +701,14 @@ pub fn encode_bytes<T: Into<u128>>(num: T, buf: &mut [u8]) -> Result<usize, Enco
         return Err(EncodeError::BufferTooSmall);
     }
 
-    //let buf = &mut buf[..digits];
     unsafe {
-        _encode_buf(num, digits, buf, WriteMode::Overwrite);
+        let len = _encode_buf(num, digits, &mut buf[..digits]);
+        debug_assert_eq!(len, digits);
     }
 
     Ok(digits)
 }
+
 /// Encodes an unsigned integer into base62, using the alternative digit ordering
 /// (0 to 9, then a to z, then A to Z), and writes it to the passed buffer.
 ///
@@ -759,9 +741,9 @@ pub fn encode_alternative_bytes<T: Into<u128>>(
         return Err(EncodeError::BufferTooSmall);
     }
 
-    let buf = &mut buf[..digits];
     unsafe {
-        _encode_alternative_buf(num, digits, buf, WriteMode::Overwrite);
+        let len = _encode_alternative_buf(num, digits, &mut buf[..digits]);
+        debug_assert_eq!(len, digits);
     }
 
     Ok(digits)
@@ -785,9 +767,9 @@ pub fn encode_alternative<T: Into<u128>>(num: T) -> String {
     let digits = digit_count(num);
     let mut buf = String::with_capacity(digits);
     unsafe {
-        let new_len = _encode_alternative_buf(num, digits, buf.as_bytes_mut(), WriteMode::Append);
-        let buf_vec = buf.as_mut_vec();
-        buf_vec.set_len(new_len);
+        buf.as_mut_vec().set_len(digits);
+        let len = _encode_alternative_buf(num, digits, buf.as_bytes_mut());
+        debug_assert_eq!(len, digits);
     }
     buf
 }
@@ -808,11 +790,12 @@ pub fn encode_alternative<T: Into<u128>>(num: T) -> String {
 pub fn encode_alternative_buf<T: Into<u128>>(num: T, buf: &mut String) {
     let num = num.into();
     let digits = digit_count(num);
+    let old_len = buf.len();
     buf.reserve(digits);
     unsafe {
-        let new_len = _encode_alternative_buf(num, digits, buf.as_bytes_mut(), WriteMode::Append);
-        let buf_vec = buf.as_mut_vec();
-        buf_vec.set_len(new_len);
+        buf.as_mut_vec().set_len(old_len + digits);
+        let len = _encode_alternative_buf(num, digits, &mut buf.as_bytes_mut()[old_len..]);
+        debug_assert_eq!(len, digits);
     }
 }
 
