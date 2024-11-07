@@ -803,36 +803,41 @@ pub fn encode_alternative_buf<T: Into<u128>>(num: T, buf: &mut String) {
 mod tests {
     use super::*;
     use alloc::vec::Vec;
-    use quickcheck::{quickcheck, TestResult};
 
-    quickcheck! {
-        fn encode_decode(num: u128) -> bool {
-            decode(encode(num)) == Ok(num)
-        }
-    }
-
-    quickcheck! {
-        fn encode_decode_alternative(num: u128) -> bool {
-            decode_alternative(encode_alternative(num)) == Ok(num)
-        }
-    }
-
-    quickcheck! {
-        fn decode_bad(input: Vec<u8>) -> TestResult {
-            if !input.is_empty() && input.iter().all(|ch| ch.is_ascii_alphanumeric()) {
-                TestResult::discard()
-            } else {
-                TestResult::from_bool(decode(&input).is_err())
+    // Don't run quickcheck tests under miri because that's infinitely slow
+    #[cfg(not(miri))]
+    mod quickcheck_tests {
+        use super::*;
+        use quickcheck::{quickcheck, TestResult};
+        quickcheck! {
+            fn encode_decode(num: u128) -> bool {
+                decode(encode(num)) == Ok(num)
             }
         }
-    }
 
-    quickcheck! {
-        fn decode_good(input: Vec<u8>) -> TestResult {
-            if !input.is_empty() && input.iter().all(|ch| ch.is_ascii_alphanumeric()) {
-                TestResult::from_bool(decode(&input).is_ok())
-            } else {
-                TestResult::discard()
+        quickcheck! {
+            fn encode_decode_alternative(num: u128) -> bool {
+                decode_alternative(encode_alternative(num)) == Ok(num)
+            }
+        }
+
+        quickcheck! {
+            fn decode_bad(input: Vec<u8>) -> TestResult {
+                if !input.is_empty() && input.iter().all(|ch| ch.is_ascii_alphanumeric()) {
+                    TestResult::discard()
+                } else {
+                    TestResult::from_bool(decode(&input).is_err())
+                }
+            }
+        }
+
+        quickcheck! {
+            fn decode_good(input: Vec<u8>) -> TestResult {
+                if !input.is_empty() && input.iter().all(|ch| ch.is_ascii_alphanumeric()) {
+                    TestResult::from_bool(decode(&input).is_ok())
+                } else {
+                    TestResult::discard()
+                }
             }
         }
     }
