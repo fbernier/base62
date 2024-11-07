@@ -698,10 +698,10 @@ pub fn encode_buf<T: Into<u128>>(num: T, buf: &mut String) {
 ///
 /// # Safety
 /// - To encode all possible values of u128, the buffer must be at least 22 bytes long. However
-/// a smaller buffer may be used if the value to be encoded is known to be smaller.
-/// Base62 encoding adds 37.5% overhead to the size of the input.
+///   a smaller buffer may be used if the value to be encoded is known to be smaller.
+///   Base62 encoding adds 37.5% overhead to the size of the input.
 /// - The remaining end of the buffer is left untouched. It's up to the caller to zero it using
-/// the returned len if they want to.
+///   the returned len if they want to.
 ///
 /// # Example
 ///
@@ -734,10 +734,10 @@ pub fn encode_bytes<T: Into<u128>>(num: T, buf: &mut [u8]) -> Result<usize, Enco
 ///
 /// # Safety
 /// - To encode all possible values of u128, the buffer must be at least 22 bytes long. However
-/// a smaller buffer may be used if the value to be encoded is known to be smaller.
-/// Base62 encoding adds 37.5% overhead to the size of the input.
+///   a smaller buffer may be used if the value to be encoded is known to be smaller.
+///   Base62 encoding adds 37.5% overhead to the size of the input.
 /// - The remaining end of the buffer is left untouched. It's up to the caller to zero it using
-/// the returned len if they want to.
+///   the returned len if they want to.
 ///
 /// # Example
 ///
@@ -904,11 +904,9 @@ mod tests {
             .chain(b'a' + 26..=255)
             .cycle();
 
-        for size in [10, 22, 23, 40].iter().map(|&size| size) {
+        for size in [10, 22, 23, 40].iter().copied() {
             input.clear();
-            for _ in 0..size {
-                input.push(b'0');
-            }
+            input.resize(size, b'0');
 
             for i in 0..size {
                 input[i] = b'1';
@@ -991,11 +989,9 @@ mod tests {
             .chain(b'a' + 26..=255)
             .cycle();
 
-        for size in [10, 22, 23, 40].iter().map(|&size| size) {
+        for size in [10, 22, 23, 40].iter().copied() {
             input.clear();
-            for _ in 0..size {
-                input.push(b'0');
-            }
+            input.resize(size, b'0');
 
             for i in 0..size {
                 input[i] = b'1';
