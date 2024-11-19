@@ -1,13 +1,14 @@
 [package]
 name = "base62"
 version = "2.0.3"
+rust-version = "1.81.0"
 authors = [
     "François Bernier <frankbernier@gmail.com>",
     "Chai T. Rex <ChaiTRex@users.noreply.github.com>",
     "Kevin Darlington <kevin@outroot.com>",
     "Christopher Tarquini <code@tarq.io>",
 ]
-edition = "2018"
+edition = "2021"
 description = "A Base62 encoding/decoding library"
 documentation = "https://docs.rs/base62/"
 homepage = "https://github.com/fbernier/base62"

@@ -9,6 +9,7 @@ encoding to and decoding from [base62](https://en.wikipedia.org/wiki/Base62).
 
 #![no_std]
 extern crate alloc;
+
 use alloc::string::String;
 
 const BASE: u64 = 62;
@@ -64,6 +65,26 @@ impl core::fmt::Display for DecodeError {
                 write!(f, "' at index {idx}")
             }
         }
+    }
+}
+
+impl core::error::Error for DecodeError {
+    fn source(&self) -> Option<&(dyn core::error::Error + 'static)> {
+        None
+    }
+}
+
+impl core::fmt::Display for EncodeError {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        match self {
+            EncodeError::BufferTooSmall => f.write_str("Buffer too small to encode number"),
+        }
+    }
+}
+
+impl core::error::Error for EncodeError {
+    fn source(&self) -> Option<&(dyn core::error::Error + 'static)> {
+        None
     }
 }
 
@@ -804,7 +825,10 @@ pub fn encode_alternative_buf<T: Into<u128>>(num: T, buf: &mut String) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use alloc::boxed::Box;
+    use alloc::string::ToString;
     use alloc::vec::Vec;
+    extern crate std;
 
     // Don't run quickcheck tests under miri because that's infinitely slow
     #[cfg(not(miri))]
@@ -1314,5 +1338,25 @@ mod tests {
         encode_alternative_buf(92202686130861137968548313400401640448_u128, &mut buf);
         assert_eq!(buf, "26Tf05FVsiGH0000000000");
         // buf.clear();
+    }
+
+    #[test]
+    fn test_error_trait() {
+        fn assert_error<T: core::error::Error>(_: &T) {}
+
+        // Test that our errors implement Error
+        assert_error(&DecodeError::EmptyInput);
+        assert_error(&EncodeError::BufferTooSmall);
+    }
+
+    #[test]
+    fn test_std_error_compatibility() {
+        use std::error::Error;
+
+        let decode_err: Box<dyn Error> = Box::new(DecodeError::EmptyInput);
+        assert!(decode_err.to_string().contains("empty string"));
+
+        let encode_err: Box<dyn Error> = Box::new(EncodeError::BufferTooSmall);
+        assert!(encode_err.to_string().contains("Buffer too small"));
     }
 }
