@@ -74,7 +74,7 @@ pub enum EncodeError {
 }
 
 macro_rules! internal_decoder_loop_body {
-    ($result:ident, $ch:ident, $i:ident, $numeric_start_value:expr, $uppercase_start_value:expr, $lowercase_start_value:expr) => {
+    ($result:ident, $ch:ident, $i:ident, $numeric_start_value:literal, $uppercase_start_value:literal, $lowercase_start_value:literal) => {
         const CHARACTER_VALUES: [u8; 256] = [
             255,
             255,
@@ -343,7 +343,7 @@ macro_rules! internal_decoder_loop_body {
 }
 
 macro_rules! internal_decoder_fn {
-    ($fn_name:ident, $numeric_start_value:expr, $uppercase_start_value:expr, $lowercase_start_value:expr) => {
+    ($fn_name:ident, $numeric_start_value:literal, $uppercase_start_value:literal, $lowercase_start_value:literal) => {
         fn $fn_name(mut input: &[u8]) -> Result<u128, DecodeError> {
             if input.is_empty() {
                 return Err(DecodeError::EmptyInput);
@@ -521,7 +521,7 @@ pub(crate) fn digit_count(n: u128) -> usize {
 }
 
 macro_rules! internal_encoder_fn {
-    ($fn_name:ident, $numeric_offset:expr, $first_letters_offset:expr, $last_letters_offset:expr) => {
+    ($fn_name:ident, $numeric_offset:literal, $first_letters_offset:literal, $last_letters_offset:literal) => {
         unsafe fn $fn_name(mut num: u128, digits: usize, buf: &mut [u8]) -> usize {
             let mut write_idx = digits;
 
