@@ -595,8 +595,10 @@ macro_rules! internal_encoder_fn {
                 ];
 
                 write_idx = write_idx.wrapping_sub(1);
-                let ch = *VALUE_CHARACTERS.get_unchecked((u64_num % BASE) as usize);
-                *buf.get_unchecked_mut(write_idx) = ch;
+                unsafe {
+                    let ch = *VALUE_CHARACTERS.get_unchecked((u64_num % BASE) as usize);
+                    *buf.get_unchecked_mut(write_idx) = ch;
+                }
 
                 digit_index = digit_index.wrapping_add(1);
                 match digit_index {
