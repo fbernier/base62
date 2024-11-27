@@ -40,9 +40,6 @@ pub enum DecodeError {
     /// The decoded number cannot fit into a [`u128`].
     ArithmeticOverflow,
 
-    /// The encoded input is an empty string.
-    EmptyInput,
-
     /// The encoded input contains the given invalid byte at the given index.
     InvalidBase62Byte(u8, usize),
 }
@@ -53,7 +50,6 @@ impl core::fmt::Display for DecodeError {
             DecodeError::ArithmeticOverflow => {
                 f.write_str("Decoded number cannot fit into a `u128`")
             }
-            DecodeError::EmptyInput => f.write_str("Encoded input is an empty string"),
             DecodeError::InvalidBase62Byte(ch, idx) => {
                 use core::fmt::Write;
 
@@ -346,7 +342,7 @@ macro_rules! internal_decoder_fn {
     ($fn_name:ident, $numeric_start_value:literal, $uppercase_start_value:literal, $lowercase_start_value:literal) => {
         fn $fn_name(mut input: &[u8]) -> Result<u128, DecodeError> {
             if input.is_empty() {
-                return Err(DecodeError::EmptyInput);
+                return Ok(0);
             }
 
             // Remove leading zeroes
@@ -825,7 +821,7 @@ mod tests {
 
         quickcheck! {
             fn decode_bad(input: Vec<u8>) -> TestResult {
-                if !input.is_empty() && input.iter().all(|ch| ch.is_ascii_alphanumeric()) {
+                if input.iter().all(|ch| ch.is_ascii_alphanumeric()) {
                     TestResult::discard()
                 } else {
                     TestResult::from_bool(decode(&input).is_err())
@@ -835,7 +831,7 @@ mod tests {
 
         quickcheck! {
             fn decode_good(input: Vec<u8>) -> TestResult {
-                if !input.is_empty() && input.iter().all(|ch| ch.is_ascii_alphanumeric()) {
+                if input.iter().all(|ch| ch.is_ascii_alphanumeric()) {
                     TestResult::from_bool(decode(&input).is_ok())
                 } else {
                     TestResult::discard()
@@ -882,7 +878,7 @@ mod tests {
 
     #[test]
     fn test_decode_empty_input() {
-        assert_eq!(decode(""), Err(DecodeError::EmptyInput));
+        assert_eq!(decode(""), Ok(0));
     }
 
     #[test]
@@ -967,7 +963,7 @@ mod tests {
 
     #[test]
     fn test_decode_alternative_empty_input() {
-        assert_eq!(decode_alternative(""), Err(DecodeError::EmptyInput));
+        assert_eq!(decode_alternative(""), Ok(0));
     }
 
     #[test]
