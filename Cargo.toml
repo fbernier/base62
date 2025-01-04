@@ -19,6 +19,11 @@ exclude = [
     ".github/*",
 ]
 
+[features]
+default = ["alloc"]
+alloc = []
+std = ["alloc"]
+
 [dev-dependencies]
 criterion = { version = "0.5", default-features = false }
 quickcheck = "1"

@@ -43,7 +43,7 @@ jobs:
       - name: Run tests
         run: cargo test --all-targets --all-features
       - name: Run doc tests
-        run: cargo test --doc
+        run: cargo test --doc --all-features
 
   fmt:
     name: Rustfmt
