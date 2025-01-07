@@ -100,6 +100,35 @@ pub fn encode_fmt<T: Into<u128>, W: fmt::Write + ?Sized>(num: T, f: &mut W) -> f
     }
 }
 
+/// Writes the base62 representation of a number using the alternative alphabet (0 to 9, then a to z, then A to Z)
+/// to any fmt::Write destination.
+///
+/// # Example
+/// ```rust
+/// # use core::fmt::Write;
+/// let mut output = String::new();
+/// base62::encode_alternative_fmt(1337_u32, &mut output).unwrap();
+/// assert_eq!(output, "lz");
+/// ```
+pub fn encode_alternative_fmt<T: Into<u128>, W: fmt::Write + ?Sized>(
+    num: T,
+    f: &mut W,
+) -> fmt::Result {
+    let num = num.into();
+    let digits = digit_count(num);
+    let mut buf = [0u8; 22]; // Maximum possible size for u128
+
+    // SAFETY: We know buf is 22 bytes which is enough for any u128
+    unsafe {
+        let len = _encode_alternative_buf(num, digits, &mut buf[..digits]);
+        // SAFETY: The encoded bytes are guaranteed to be valid ASCII
+        for &b in &buf[..len] {
+            f.write_char(char::from_u32_unchecked(b as u32))?;
+        }
+        Ok(())
+    }
+}
+
 /// Writes the base62 representation of a number using the standard alphabet to any io::Write destination.
 ///
 /// This function is only available when the `std` feature is enabled.
@@ -123,6 +152,34 @@ pub fn encode_io<T: Into<u128>, W: std::io::Write + ?Sized>(
     // SAFETY: We know buf is 22 bytes which is enough for any u128
     unsafe {
         let len = _encode_buf(num, digits, &mut buf[..digits]);
+        w.write_all(&buf[..len])
+    }
+}
+
+/// Writes the base62 representation of a number using the alternative alphabet (0 to 9, then a to z, then A to Z)
+/// to any io::Write destination.
+///
+/// This function is only available when the `std` feature is enabled.
+///
+/// # Example
+/// ```rust
+/// # use std::io::Write;
+/// let mut output = Vec::new();
+/// base62::encode_alternative_io(1337_u32, &mut output).unwrap();
+/// assert_eq!(output, b"lz");
+/// ```
+#[cfg(feature = "std")]
+pub fn encode_alternative_io<T: Into<u128>, W: std::io::Write + ?Sized>(
+    num: T,
+    w: &mut W,
+) -> std::io::Result<()> {
+    let num = num.into();
+    let digits = digit_count(num);
+    let mut buf = [0u8; 22]; // Maximum possible size for u128
+
+    // SAFETY: We know buf is 22 bytes which is enough for any u128
+    unsafe {
+        let len = _encode_alternative_buf(num, digits, &mut buf[..digits]);
         w.write_all(&buf[..len])
     }
 }
@@ -642,7 +699,6 @@ unsafe fn _encode_alternative_buf(num: u128, digits: usize, buf: &mut [u8]) -> u
     _encode_alternative_bytes_impl(num, digits, buf)
 }
 
-#[cfg(feature = "alloc")]
 mod alloc_support {
     use super::*;
     use alloc::string::String;
@@ -959,6 +1015,55 @@ mod tests {
         v.extend_from_slice(b"Value: ");
         encode_io(1337_u32, &mut v).unwrap();
         assert_eq!(v, b"Value: LZ");
+    }
+
+    #[test]
+    fn test_encode_alternative_fmt() {
+        let mut s = String::new();
+
+        // Test basic encoding
+        encode_alternative_fmt(1337_u32, &mut s).unwrap();
+        assert_eq!(s, "lz");
+        s.clear();
+
+        // Test numeric boundaries
+        encode_alternative_fmt(0_u8, &mut s).unwrap();
+        assert_eq!(s, "0");
+        s.clear();
+
+        encode_alternative_fmt(u128::MAX, &mut s).unwrap();
+        assert_eq!(s, "7N42dgm5tFLK9N8MT7fHC7");
+        s.clear();
+
+        // Test appending
+        s.push_str("Value: ");
+        encode_alternative_fmt(1337_u32, &mut s).unwrap();
+        assert_eq!(s, "Value: lz");
+    }
+
+    #[cfg(feature = "std")]
+    #[test]
+    fn test_encode_alternative_io() {
+        let mut v = Vec::new();
+
+        // Test basic encoding
+        encode_alternative_io(1337_u32, &mut v).unwrap();
+        assert_eq!(v, b"lz");
+        v.clear();
+
+        // Test numeric boundaries
+        encode_alternative_io(0_u8, &mut v).unwrap();
+        assert_eq!(v, b"0");
+        v.clear();
+
+        encode_alternative_io(u128::MAX, &mut v).unwrap();
+        assert_eq!(v, b"7N42dgm5tFLK9N8MT7fHC7");
+        v.clear();
+
+        // Test appending
+        v.extend_from_slice(b"Value: ");
+        encode_alternative_io(1337_u32, &mut v).unwrap();
+        assert_eq!(v, b"Value: lz");
     }
 
     #[test]
