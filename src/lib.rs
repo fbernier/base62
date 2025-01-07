@@ -50,6 +50,12 @@ pub enum DecodeError {
     InvalidBase62Byte(u8, usize),
 }
 
+/// Indicates the cause of an encoding failure in [`encode`](crate::encode_bytes).
+#[derive(Copy, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+pub enum EncodeError {
+    BufferTooSmall,
+}
+
 impl core::fmt::Display for DecodeError {
     fn fmt(&self, f: &mut core::fmt::Formatter) -> core::fmt::Result {
         match *self {
@@ -69,10 +75,29 @@ impl core::fmt::Display for DecodeError {
     }
 }
 
-/// Indicates the cause of an encoding failure in [`encode`](crate::encode_bytes).
-#[derive(Copy, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
-pub enum EncodeError {
-    BufferTooSmall,
+// For DecodeError
+#[rustversion::since(1.81)]
+impl core::error::Error for DecodeError {}
+
+#[rustversion::before(1.81)]
+#[cfg(feature = "std")]
+impl std::error::Error for DecodeError {}
+
+// For EncodeError
+#[rustversion::since(1.81)]
+impl core::error::Error for EncodeError {}
+
+#[rustversion::before(1.81)]
+#[cfg(feature = "std")]
+impl std::error::Error for EncodeError {}
+
+// You'll also need to implement std::fmt::Display for EncodeError since it's required for Error
+impl core::fmt::Display for EncodeError {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        match self {
+            EncodeError::BufferTooSmall => write!(f, "Buffer too small to encode the number"),
+        }
+    }
 }
 
 /// Writes the base62 representation of a number using the standard alphabet to any fmt::Write destination.
