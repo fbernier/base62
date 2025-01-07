@@ -966,6 +966,78 @@ mod tests {
                 }
             }
         }
+
+        quickcheck! {
+            fn encode_fmt_decode(num: u128) -> bool {
+                let mut s = String::new();
+                encode_fmt(num, &mut s).unwrap();
+                decode(&s) == Ok(num)
+            }
+        }
+
+        quickcheck! {
+            fn encode_alternative_fmt_decode(num: u128) -> bool {
+                let mut s = String::new();
+                encode_alternative_fmt(num, &mut s).unwrap();
+                decode_alternative(&s) == Ok(num)
+            }
+        }
+
+        #[cfg(feature = "std")]
+        quickcheck! {
+            fn encode_io_decode(num: u128) -> bool {
+                let mut v = Vec::new();
+                encode_io(num, &mut v).unwrap();
+                decode(&v) == Ok(num)
+            }
+        }
+
+        #[cfg(feature = "std")]
+        quickcheck! {
+            fn encode_alternative_io_decode(num: u128) -> bool {
+                let mut v = Vec::new();
+                encode_alternative_io(num, &mut v).unwrap();
+                decode_alternative(&v) == Ok(num)
+            }
+        }
+
+        quickcheck! {
+            fn encode_buf_decode(num: u128) -> bool {
+                let mut s = String::new();
+                encode_buf(num, &mut s);
+                decode(&s) == Ok(num)
+            }
+        }
+
+        quickcheck! {
+            fn encode_alternative_buf_decode(num: u128) -> bool {
+                let mut s = String::new();
+                encode_alternative_buf(num, &mut s);
+                decode_alternative(&s) == Ok(num)
+            }
+        }
+
+        quickcheck! {
+            fn encode_bytes_decode(num: u128) -> bool {
+                let mut buf = [0u8; 22];  // Max size needed for u128
+                if let Ok(len) = encode_bytes(num, &mut buf) {
+                    decode(&buf[..len]) == Ok(num)
+                } else {
+                    false
+                }
+            }
+        }
+
+        quickcheck! {
+            fn encode_alternative_bytes_decode(num: u128) -> bool {
+                let mut buf = [0u8; 22];  // Max size needed for u128
+                if let Ok(len) = encode_alternative_bytes(num, &mut buf) {
+                    decode_alternative(&buf[..len]) == Ok(num)
+                } else {
+                    false
+                }
+            }
+        }
     }
 
     #[test]
