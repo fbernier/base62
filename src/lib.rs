@@ -56,15 +56,15 @@ pub enum EncodeError {
     BufferTooSmall,
 }
 
-impl core::fmt::Display for DecodeError {
-    fn fmt(&self, f: &mut core::fmt::Formatter) -> core::fmt::Result {
+impl fmt::Display for DecodeError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match *self {
             DecodeError::ArithmeticOverflow => {
                 f.write_str("Decoded number cannot fit into a `u128`")
             }
             DecodeError::EmptyInput => f.write_str("Encoded input is an empty string"),
             DecodeError::InvalidBase62Byte(ch, idx) => {
-                use core::fmt::Write;
+                use fmt::Write;
                 f.write_str("Encoded input contains the invalid byte b'")?;
                 for char_in_escape in core::ascii::escape_default(ch) {
                     f.write_char(char::from(char_in_escape))?;
@@ -92,8 +92,8 @@ impl core::error::Error for EncodeError {}
 impl std::error::Error for EncodeError {}
 
 // You'll also need to implement std::fmt::Display for EncodeError since it's required for Error
-impl core::fmt::Display for EncodeError {
-    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+impl fmt::Display for EncodeError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             EncodeError::BufferTooSmall => write!(f, "Buffer too small to encode the number"),
         }
@@ -104,7 +104,6 @@ impl core::fmt::Display for EncodeError {
 ///
 /// # Example
 /// ```rust
-/// # use core::fmt::Write;
 /// let mut output = String::new();
 /// base62::encode_fmt(1337_u32, &mut output).unwrap();
 /// assert_eq!(output, "LZ");
@@ -125,12 +124,24 @@ pub fn encode_fmt<T: Into<u128>, W: fmt::Write + ?Sized>(num: T, f: &mut W) -> f
     }
 }
 
+/// Transparent wrapper over a value, [`Display`]ing it via [`encode_fmt()`].
+///
+/// [`Display`]: fmt::Display
+#[derive(Copy, Clone, Debug)]
+#[repr(transparent)]
+pub struct Display<T>(pub T);
+
+impl<T: Clone + Into<u128>> fmt::Display for Display<T> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        encode_fmt(self.0.clone(), f)
+    }
+}
+
 /// Writes the base62 representation of a number using the alternative alphabet (0 to 9, then a to z, then A to Z)
 /// to any fmt::Write destination.
 ///
 /// # Example
 /// ```rust
-/// # use core::fmt::Write;
 /// let mut output = String::new();
 /// base62::encode_alternative_fmt(1337_u32, &mut output).unwrap();
 /// assert_eq!(output, "lz");
@@ -151,6 +162,19 @@ pub fn encode_alternative_fmt<T: Into<u128>, W: fmt::Write + ?Sized>(
             f.write_char(char::from_u32_unchecked(b as u32))?;
         }
         Ok(())
+    }
+}
+
+/// Transparent wrapper over a value, [`Display`]ing it via [`encode_alternative_fmt()`].
+///
+/// [`Display`]: fmt::Display
+#[derive(Copy, Clone, Debug)]
+#[repr(transparent)]
+pub struct DisplayAlternative<T>(pub T);
+
+impl<T: Clone + Into<u128>> fmt::Display for Display<T> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        encode_alternative_fmt(self.0.clone(), f)
     }
 }
 
