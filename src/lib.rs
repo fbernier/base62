@@ -172,7 +172,7 @@ pub fn encode_alternative_fmt<T: Into<u128>, W: fmt::Write + ?Sized>(
 #[repr(transparent)]
 pub struct DisplayAlternative<T>(pub T);
 
-impl<T: Clone + Into<u128>> fmt::Display for Display<T> {
+impl<T: Clone + Into<u128>> fmt::Display for DisplayAlternative<T> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         encode_alternative_fmt(self.0.clone(), f)
     }
