@@ -124,16 +124,24 @@ pub fn encode_fmt<T: Into<u128>, W: fmt::Write + ?Sized>(num: T, f: &mut W) -> f
     }
 }
 
-/// Transparent wrapper over a value, [`Display`]ing it via [`encode_fmt()`].
+/// Wraps a number to [`Display`] it via [`encode_fmt()`].
+///
+/// # Example
+/// ```rust
+/// assert_eq!(format!("{}", base62::fmt(1337_u32)), "LZ");
+/// assert_eq!(base62::fmt(1337_u32).to_string(), "LZ");
+/// ```
 ///
 /// [`Display`]: fmt::Display
-#[derive(Copy, Clone, Debug)]
-#[repr(transparent)]
-pub struct Display<T>(pub T);
+pub fn fmt<T: Into<u128>>(num: T) -> impl fmt::Display {
+    Fmt(num.into())
+}
 
-impl<T: Clone + Into<u128>> fmt::Display for Display<T> {
+struct Fmt(u128);
+
+impl fmt::Display for Fmt {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        encode_fmt(self.0.clone(), f)
+        encode_fmt(self.0, f)
     }
 }
 
@@ -165,16 +173,24 @@ pub fn encode_alternative_fmt<T: Into<u128>, W: fmt::Write + ?Sized>(
     }
 }
 
-/// Transparent wrapper over a value, [`Display`]ing it via [`encode_alternative_fmt()`].
+/// Wraps a number to [`Display`] it via [`encode_alternative_fmt()`].
+///
+/// # Example
+/// ```rust
+/// assert_eq!(format!("{}", base62::fmt_alt(1337_u32)), "lz");
+/// assert_eq!(base62::fmt_alt(1337_u32).to_string(), "lz");
+/// ```
 ///
 /// [`Display`]: fmt::Display
-#[derive(Copy, Clone, Debug)]
-#[repr(transparent)]
-pub struct DisplayAlternative<T>(pub T);
+pub fn fmt_alt<T: Into<u128>>(num: T) -> impl fmt::Display {
+    FmtAlternative(num.into())
+}
 
-impl<T: Clone + Into<u128>> fmt::Display for DisplayAlternative<T> {
+struct FmtAlternative(u128);
+
+impl fmt::Display for FmtAlternative {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        encode_alternative_fmt(self.0.clone(), f)
+        encode_alternative_fmt(self.0, f)
     }
 }
 
