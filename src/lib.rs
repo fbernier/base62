@@ -100,98 +100,62 @@ impl fmt::Display for EncodeError {
     }
 }
 
-/// Writes the base62 representation of a number using the standard alphabet to any fmt::Write destination.
-///
-/// # Example
-/// ```rust
-/// let mut output = String::new();
-/// base62::encode_fmt(1337_u32, &mut output).unwrap();
-/// assert_eq!(output, "LZ");
-/// ```
-pub fn encode_fmt<T: Into<u128>, W: fmt::Write + ?Sized>(num: T, f: &mut W) -> fmt::Result {
-    let num = num.into();
-    let digits = digit_count(num);
-    let mut buf = [0u8; 22]; // Maximum possible size for u128
-
-    // SAFETY: We know buf is 22 bytes which is enough for any u128
-    unsafe {
-        let len = _encode_buf(num, digits, &mut buf[..digits]);
-        // SAFETY: The encoded bytes are guaranteed to be valid ASCII
-        for &b in &buf[..len] {
-            f.write_char(char::from_u32_unchecked(b as u32))?;
-        }
-        Ok(())
-    }
-}
-
-/// Wraps a number to [`Display`] it via [`encode_fmt()`].
-///
-/// # Example
-/// ```rust
-/// assert_eq!(format!("{}", base62::fmt(1337_u32)), "LZ");
-/// assert_eq!(base62::fmt(1337_u32).to_string(), "LZ");
-/// ```
-///
-/// [`Display`]: fmt::Display
-pub fn fmt<T: Into<u128>>(num: T) -> impl fmt::Display {
-    Fmt(num.into())
-}
-
 struct Fmt(u128);
 
 impl fmt::Display for Fmt {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        encode_fmt(self.0, f)
-    }
-}
-
-/// Writes the base62 representation of a number using the alternative alphabet (0 to 9, then a to z, then A to Z)
-/// to any fmt::Write destination.
-///
-/// # Example
-/// ```rust
-/// let mut output = String::new();
-/// base62::encode_alternative_fmt(1337_u32, &mut output).unwrap();
-/// assert_eq!(output, "lz");
-/// ```
-pub fn encode_alternative_fmt<T: Into<u128>, W: fmt::Write + ?Sized>(
-    num: T,
-    f: &mut W,
-) -> fmt::Result {
-    let num = num.into();
-    let digits = digit_count(num);
-    let mut buf = [0u8; 22]; // Maximum possible size for u128
-
-    // SAFETY: We know buf is 22 bytes which is enough for any u128
-    unsafe {
-        let len = _encode_alternative_buf(num, digits, &mut buf[..digits]);
-        // SAFETY: The encoded bytes are guaranteed to be valid ASCII
-        for &b in &buf[..len] {
-            f.write_char(char::from_u32_unchecked(b as u32))?;
+        let mut buf = [0u8; 22];
+        let digits = digit_count(self.0);
+        unsafe {
+            let len = _encode_buf(self.0, digits, &mut buf[..digits]);
+            // Use pad() to handle formatting specifiers
+            let s = core::str::from_utf8_unchecked(&buf[..len]);
+            f.pad(s)
         }
-        Ok(())
     }
 }
 
-/// Wraps a number to [`Display`] it via [`encode_alternative_fmt()`].
+/// Writes the base62 representation of a number using the standard alphabet to any fmt::Write destination.
 ///
 /// # Example
 /// ```rust
-/// assert_eq!(format!("{}", base62::fmt_alt(1337_u32)), "lz");
-/// assert_eq!(base62::fmt_alt(1337_u32).to_string(), "lz");
-/// ```
+/// use core::fmt::Write;
 ///
-/// [`Display`]: fmt::Display
-pub fn fmt_alt<T: Into<u128>>(num: T) -> impl fmt::Display {
-    FmtAlternative(num.into())
+/// let mut output = String::new();
+/// write!(output, "{}", base62::encode_fmt(1337_u32));
+/// assert_eq!(output, "LZ");
+/// ```
+pub fn encode_fmt<T: Into<u128>>(num: T) -> impl fmt::Display {
+    Fmt(num.into())
 }
 
 struct FmtAlternative(u128);
 
 impl fmt::Display for FmtAlternative {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        encode_alternative_fmt(self.0, f)
+        let mut buf = [0u8; 22];
+        let digits = digit_count(self.0);
+        unsafe {
+            let len = _encode_alternative_buf(self.0, digits, &mut buf[..digits]);
+            // Use pad() to handle formatting specifiers
+            let s = core::str::from_utf8_unchecked(&buf[..len]);
+            f.pad(s)
+        }
     }
+}
+
+/// Writes the base62 representation of a number using the alternative alphabet to any fmt::Write destination.
+///
+/// # Example
+/// ```rust
+/// use core::fmt::Write;
+///
+/// let mut output = String::new();
+/// write!(output, "{}", base62::encode_fmt_alt(1337_u32));
+/// assert_eq!(output, "lz");
+/// ```
+pub fn encode_fmt_alt<T: Into<u128>>(num: T) -> impl fmt::Display {
+    FmtAlternative(num.into())
 }
 
 /// Writes the base62 representation of a number using the standard alphabet to any io::Write destination.
@@ -1000,6 +964,7 @@ mod tests {
     #[cfg(all(test, feature = "alloc", not(miri)))]
     mod quickcheck_tests {
         use super::*;
+        use alloc::string::ToString;
         use quickcheck::{quickcheck, TestResult};
         quickcheck! {
             fn encode_decode(num: u128) -> bool {
@@ -1034,18 +999,18 @@ mod tests {
         }
 
         quickcheck! {
-            fn encode_fmt_decode(num: u128) -> bool {
-                let mut s = String::new();
-                encode_fmt(num, &mut s).unwrap();
-                decode(&s) == Ok(num)
+            fn fmt_matches_encode(num: u128) -> bool {
+                let direct = encode(num);
+                let formatted = encode_fmt(num).to_string();
+                direct == formatted
             }
         }
 
         quickcheck! {
-            fn encode_alternative_fmt_decode(num: u128) -> bool {
-                let mut s = String::new();
-                encode_alternative_fmt(num, &mut s).unwrap();
-                decode_alternative(&s) == Ok(num)
+            fn fmt_alt_matches_encode_alt(num: u128) -> bool {
+                let direct = encode_alternative(num);
+                let formatted = encode_fmt_alt(num).to_string();
+                direct == formatted
             }
         }
 
@@ -1202,17 +1167,6 @@ mod tests {
         }
 
         #[test]
-        fn test_encode_fmt() {
-            let mut s = String::new();
-            encode_fmt(1337_u32, &mut s).unwrap();
-            assert_eq!(s, "LZ");
-            s.clear();
-
-            encode_fmt(0_u8, &mut s).unwrap();
-            assert_eq!(s, "0");
-        }
-
-        #[test]
         fn test_encode_alternative() {
             assert_eq!(encode_alternative(u128::MAX), "7N42dgm5tFLK9N8MT7fHC7");
             assert_eq!(encode_alternative(u64::MAX as u128 + 1), "lYGhA16ahyg");
@@ -1226,13 +1180,6 @@ mod tests {
             buf.push_str("Base62: ");
             encode_alternative_buf(34051405518_u64, &mut buf);
             assert_eq!(buf, "Base62: Base62");
-        }
-
-        #[test]
-        fn test_encode_alternative_fmt() {
-            let mut s = String::new();
-            encode_alternative_fmt(1337_u32, &mut s).unwrap();
-            assert_eq!(s, "lz");
         }
 
         #[test]
@@ -1252,13 +1199,67 @@ mod tests {
             assert_eq!(decode_alternative("0"), Ok(0));
             assert_eq!(decode_alternative("caCOuUN"), Ok(691337691337));
         }
+
+        #[test]
+        fn test_fmt_basics() {
+            assert_eq!(encode_fmt(1337u32).to_string(), "LZ");
+            assert_eq!(encode_fmt(0u32).to_string(), "0");
+            assert_eq!(encode_fmt(u128::MAX).to_string(), "7n42DGM5Tflk9n8mt7Fhc7");
+        }
+
+        #[test]
+        fn test_fmt_padding() {
+            assert_eq!(
+                format!("{:0>22}", encode_fmt(1337u32)),
+                "00000000000000000000LZ"
+            );
+            assert_eq!(
+                format!("{:0>22}", encode_fmt(0u32)),
+                "0000000000000000000000"
+            );
+        }
+
+        #[test]
+        fn test_fmt_alternative_basics() {
+            assert_eq!(encode_fmt_alt(1337u32).to_string(), "lz");
+            assert_eq!(encode_fmt_alt(0u32).to_string(), "0");
+            assert_eq!(
+                encode_fmt_alt(u128::MAX).to_string(),
+                "7N42dgm5tFLK9N8MT7fHC7"
+            );
+        }
+
+        #[test]
+        fn test_fmt_alternative_padding() {
+            assert_eq!(
+                format!("{:0>22}", encode_fmt_alt(1337u32)),
+                "00000000000000000000lz"
+            );
+            assert_eq!(
+                format!("{:0>22}", encode_fmt_alt(0u32)),
+                "0000000000000000000000"
+            );
+        }
+
+        #[test]
+        fn test_fmt_alignment() {
+            let num = 1337u32;
+            assert_eq!(format!("{:<5}", encode_fmt(num)), "LZ   ");
+            assert_eq!(format!("{:>5}", encode_fmt(num)), "   LZ");
+            assert_eq!(format!("{:^5}", encode_fmt(num)), " LZ  ");
+        }
+
+        #[test]
+        fn test_fmt_with_prefix() {
+            assert_eq!(format!("base62: {}", encode_fmt(1337u32)), "base62: LZ");
+            assert_eq!(format!("base62: {}", encode_fmt_alt(1337u32)), "base62: lz");
+        }
     }
 
     // Tests requiring std
     #[cfg(feature = "std")]
     mod std_tests {
         use super::*;
-        use std::io::Write;
 
         #[test]
         fn test_encode_io() {
