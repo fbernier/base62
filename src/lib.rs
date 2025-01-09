@@ -764,6 +764,7 @@ unsafe fn _encode_alternative_buf(num: u128, digits: usize, buf: &mut [u8]) -> u
     _encode_alternative_bytes_impl(num, digits, buf)
 }
 
+#[cfg(feature = "alloc")]
 mod alloc_support {
     use super::*;
     use alloc::string::String;
@@ -996,7 +997,7 @@ mod tests {
     use alloc::vec::Vec;
 
     // Don't run quickcheck tests under miri because that's infinitely slow
-    #[cfg(not(miri))]
+    #[cfg(all(test, feature = "alloc", not(miri)))]
     mod quickcheck_tests {
         use super::*;
         use quickcheck::{quickcheck, TestResult};
@@ -1105,429 +1106,14 @@ mod tests {
         }
     }
 
-    #[test]
-    fn test_encode_fmt() {
-        let mut s = String::new();
-
-        // Test basic encoding
-        encode_fmt(1337_u32, &mut s).unwrap();
-        assert_eq!(s, "LZ");
-        s.clear();
-
-        // Test numeric boundaries
-        encode_fmt(0_u8, &mut s).unwrap();
-        assert_eq!(s, "0");
-        s.clear();
-
-        encode_fmt(u128::MAX, &mut s).unwrap();
-        assert_eq!(s, "7n42DGM5Tflk9n8mt7Fhc7");
-        s.clear();
-
-        // Test appending
-        s.push_str("Value: ");
-        encode_fmt(1337_u32, &mut s).unwrap();
-        assert_eq!(s, "Value: LZ");
-    }
-
-    #[cfg(feature = "std")]
-    #[test]
-    fn test_encode_io() {
-        let mut v = Vec::new();
-
-        // Test basic encoding
-        encode_io(1337_u32, &mut v).unwrap();
-        assert_eq!(v, b"LZ");
-        v.clear();
-
-        // Test numeric boundaries
-        encode_io(0_u8, &mut v).unwrap();
-        assert_eq!(v, b"0");
-        v.clear();
-
-        encode_io(u128::MAX, &mut v).unwrap();
-        assert_eq!(v, b"7n42DGM5Tflk9n8mt7Fhc7");
-        v.clear();
-
-        // Test appending
-        v.extend_from_slice(b"Value: ");
-        encode_io(1337_u32, &mut v).unwrap();
-        assert_eq!(v, b"Value: LZ");
-    }
-
-    #[test]
-    fn test_encode_alternative_fmt() {
-        let mut s = String::new();
-
-        // Test basic encoding
-        encode_alternative_fmt(1337_u32, &mut s).unwrap();
-        assert_eq!(s, "lz");
-        s.clear();
-
-        // Test numeric boundaries
-        encode_alternative_fmt(0_u8, &mut s).unwrap();
-        assert_eq!(s, "0");
-        s.clear();
-
-        encode_alternative_fmt(u128::MAX, &mut s).unwrap();
-        assert_eq!(s, "7N42dgm5tFLK9N8MT7fHC7");
-        s.clear();
-
-        // Test appending
-        s.push_str("Value: ");
-        encode_alternative_fmt(1337_u32, &mut s).unwrap();
-        assert_eq!(s, "Value: lz");
-    }
-
-    #[cfg(feature = "std")]
-    #[test]
-    fn test_encode_alternative_io() {
-        let mut v = Vec::new();
-
-        // Test basic encoding
-        encode_alternative_io(1337_u32, &mut v).unwrap();
-        assert_eq!(v, b"lz");
-        v.clear();
-
-        // Test numeric boundaries
-        encode_alternative_io(0_u8, &mut v).unwrap();
-        assert_eq!(v, b"0");
-        v.clear();
-
-        encode_alternative_io(u128::MAX, &mut v).unwrap();
-        assert_eq!(v, b"7N42dgm5tFLK9N8MT7fHC7");
-        v.clear();
-
-        // Test appending
-        v.extend_from_slice(b"Value: ");
-        encode_alternative_io(1337_u32, &mut v).unwrap();
-        assert_eq!(v, b"Value: lz");
-    }
-
-    #[test]
-    fn test_decode() {
-        // Test leading zeroes handling
-        assert_eq!(
-            decode("00001000000000000000000000"),
-            Ok((BASE as u128).pow(21))
-        );
-
-        // Test numeric type boundaries
-        assert_eq!(decode("7n42DGM5Tflk9n8mt7Fhc7"), Ok(u128::MAX));
-        assert_eq!(decode("LygHa16AHYG"), Ok(u64::MAX as u128 + 1));
-        assert_eq!(decode("LygHa16AHYF"), Ok(u64::MAX as u128));
-        assert_eq!(decode("0"), Ok(0));
-
-        // Test base62 length-change boundaries
-        let mut power = 1_u128;
-        let mut power_minus_one_str = String::with_capacity(21);
-        let mut power_str = String::with_capacity(22);
-        power_str.push('1');
-        for _ in 1..22 {
-            power *= BASE as u128;
-            power_minus_one_str.push('z');
-            power_str.push('0');
-
-            assert_eq!(decode(&power_minus_one_str), Ok(power - 1));
-            assert_eq!(decode(&power_str), Ok(power));
-        }
-
-        // Test cases that failed due to earlier bugs
-        assert_eq!(decode("CAcoUun"), Ok(691337691337));
-        assert_eq!(
-            decode("26tF05fvSIgh0000000000"),
-            Ok(92202686130861137968548313400401640448)
-        );
-    }
-
-    #[test]
-    fn test_decode_empty_input() {
-        assert_eq!(decode(""), Err(DecodeError::EmptyInput));
-    }
-
-    #[test]
-    fn test_decode_invalid_char() {
-        let mut input = Vec::with_capacity(40);
-        let mut invalid_chars = (0..b'0')
-            .chain(b'0' + 10..b'A')
-            .chain(b'A' + 26..b'a')
-            .chain(b'a' + 26..=255)
-            .cycle();
-
-        for size in [10, 22, 23, 40].iter().copied() {
-            input.clear();
-            input.resize(size, b'0');
-
-            for i in 0..size {
-                input[i] = b'1';
-                for j in 0..size {
-                    let invalid_char = invalid_chars.next().unwrap();
-                    input[j] = invalid_char;
-
-                    assert_eq!(
-                        decode(&input),
-                        Err(DecodeError::InvalidBase62Byte(invalid_char, j))
-                    );
-
-                    input[j] = b'0';
-                    input[i] = b'1';
-                }
-                input[i] = b'0';
-            }
-        }
-    }
-
-    #[test]
-    fn test_decode_overflow() {
-        assert_eq!(
-            decode("10000000000000000000000"),
-            Err(DecodeError::ArithmeticOverflow)
-        );
-        assert_eq!(
-            decode("7n42DGM5Tflk9n8mt7Fhc78"),
-            Err(DecodeError::ArithmeticOverflow)
-        );
-    }
-
-    #[test]
-    fn test_decode_alternative() {
-        // Test leading zeroes handling
-        assert_eq!(
-            decode_alternative("00001000000000000000000000"),
-            Ok((BASE as u128).pow(21))
-        );
-
-        // Test numeric type boundaries
-        assert_eq!(decode_alternative("7N42dgm5tFLK9N8MT7fHC7"), Ok(u128::MAX));
-        assert_eq!(decode_alternative("lYGhA16ahyg"), Ok(u64::MAX as u128 + 1));
-        assert_eq!(decode_alternative("lYGhA16ahyf"), Ok(u64::MAX as u128));
-        assert_eq!(decode_alternative("0"), Ok(0));
-
-        // Test base62 length-change boundaries
-        let mut power = 1_u128;
-        let mut power_minus_one_str = String::with_capacity(21);
-        let mut power_str = String::with_capacity(22);
-        power_str.push('1');
-        for _ in 1..22 {
-            power *= BASE as u128;
-            power_minus_one_str.push('Z');
-            power_str.push('0');
-
-            assert_eq!(decode_alternative(&power_minus_one_str), Ok(power - 1));
-            assert_eq!(decode_alternative(&power_str), Ok(power));
-        }
-
-        // Test cases that failed due to earlier bugs
-        assert_eq!(decode_alternative("caCOuUN"), Ok(691337691337));
-        assert_eq!(
-            decode_alternative("26Tf05FVsiGH0000000000"),
-            Ok(92202686130861137968548313400401640448)
-        );
-    }
-
-    #[test]
-    fn test_decode_alternative_empty_input() {
-        assert_eq!(decode_alternative(""), Err(DecodeError::EmptyInput));
-    }
-
-    #[test]
-    fn test_decode_altenative_invalid_char() {
-        let mut input = Vec::with_capacity(40);
-        let mut invalid_chars = (0..b'0')
-            .chain(b'0' + 10..b'A')
-            .chain(b'A' + 26..b'a')
-            .chain(b'a' + 26..=255)
-            .cycle();
-
-        for size in [10, 22, 23, 40].iter().copied() {
-            input.clear();
-            input.resize(size, b'0');
-
-            for i in 0..size {
-                input[i] = b'1';
-                for j in 0..size {
-                    let invalid_char = invalid_chars.next().unwrap();
-                    input[j] = invalid_char;
-
-                    assert_eq!(
-                        decode_alternative(&input),
-                        Err(DecodeError::InvalidBase62Byte(invalid_char, j))
-                    );
-
-                    input[j] = b'0';
-                    input[i] = b'1';
-                }
-                input[i] = b'0';
-            }
-        }
-    }
-
-    #[test]
-    fn test_decode_alternative_overflow() {
-        assert_eq!(
-            decode_alternative("10000000000000000000000"),
-            Err(DecodeError::ArithmeticOverflow)
-        );
-        assert_eq!(
-            decode_alternative("7N42dgm5tFLK9N8MT7fHC8"),
-            Err(DecodeError::ArithmeticOverflow)
-        );
-    }
-
-    #[test]
-    fn test_encode() {
-        // Test numeric type boundaries
-        assert_eq!(encode(u128::MAX), "7n42DGM5Tflk9n8mt7Fhc7");
-        assert_eq!(encode(u64::MAX as u128 + 1), "LygHa16AHYG");
-        assert_eq!(encode(u64::MAX), "LygHa16AHYF");
-        assert_eq!(encode(0_u8), "0");
-
-        // Test base62 length-change boundaries
-        let mut power = 1_u128;
-        let mut power_minus_one_str = String::with_capacity(21);
-        let mut power_str = String::with_capacity(22);
-        power_str.push('1');
-        for _ in 1..22 {
-            power *= BASE as u128;
-            power_minus_one_str.push('z');
-            power_str.push('0');
-
-            assert_eq!(encode(power - 1), power_minus_one_str);
-            assert_eq!(encode(power), power_str);
-        }
-
-        // Test cases that failed due to earlier bugs
-        assert_eq!(encode(691337691337_u64), "CAcoUun");
-        assert_eq!(
-            encode(92202686130861137968548313400401640448_u128),
-            "26tF05fvSIgh0000000000"
-        );
-    }
-
-    #[test]
-    fn test_encode_buf() {
-        let mut buf = String::with_capacity(22);
-
-        // Test append functionality
-        buf.push_str("Base62: ");
-        encode_buf(10622433094_u64, &mut buf);
-        assert_eq!(buf, "Base62: Base62");
-        buf.clear();
-
-        // Test numeric type boundaries
-        encode_buf(u128::MAX, &mut buf);
-        assert_eq!(buf, "7n42DGM5Tflk9n8mt7Fhc7");
-        buf.clear();
-
-        encode_buf(u64::MAX as u128 + 1, &mut buf);
-        assert_eq!(buf, "LygHa16AHYG");
-        buf.clear();
-
-        encode_buf(u64::MAX, &mut buf);
-        assert_eq!(buf, "LygHa16AHYF");
-        buf.clear();
-
-        encode_buf(0_u8, &mut buf);
-        assert_eq!(buf, "0");
-        buf.clear();
-
-        // Test base62 length-change boundaries
-        let mut power = 1_u128;
-        let mut power_minus_one_str = String::with_capacity(21);
-        let mut power_str = String::with_capacity(22);
-        power_str.push('1');
-        for _ in 1..22 {
-            power *= BASE as u128;
-            power_minus_one_str.push('z');
-            power_str.push('0');
-
-            encode_buf(power - 1, &mut buf);
-            assert_eq!(buf, power_minus_one_str);
-            buf.clear();
-
-            encode_buf(power, &mut buf);
-            assert_eq!(buf, power_str);
-            buf.clear();
-        }
-
-        // Test cases that failed due to earlier bugs
-        encode_buf(691337691337_u64, &mut buf);
-        assert_eq!(buf, "CAcoUun");
-        buf.clear();
-
-        encode_buf(92202686130861137968548313400401640448_u128, &mut buf);
-        assert_eq!(buf, "26tF05fvSIgh0000000000");
-    }
-
-    #[test]
-    fn test_encode_bytes() {
-        let mut buf = [0; 22];
-
-        // Test numeric type boundaries
-        assert!(encode_bytes(u128::MAX, &mut buf).is_ok());
-        assert!(&buf[..].starts_with(b"7n42DGM5Tflk9n8mt7Fhc7"));
-        buf.fill(0);
-
-        assert!(encode_bytes(u64::MAX as u128 + 1, &mut buf).is_ok());
-        assert!(&buf[..].starts_with(b"LygHa16AHYG"));
-        buf.fill(0);
-
-        assert!(encode_bytes(u64::MAX, &mut buf).is_ok());
-        assert!(&buf[..].starts_with(b"LygHa16AHYF"));
-        buf.fill(0);
-
-        assert!(encode_bytes(0_u8, &mut buf).is_ok());
-        assert!(&buf[..].starts_with(b"0"));
-        buf.fill(0);
-
-        // Test base62 length-change boundaries
-        let mut power = 1_u128;
-        let mut power_minus_one_str = String::with_capacity(21);
-        let mut power_str = String::with_capacity(22);
-        power_str.push('1');
-        for _ in 1..22 {
-            power *= BASE as u128;
-            power_minus_one_str.push('z');
-            power_str.push('0');
-
-            assert!(encode_bytes(power - 1, &mut buf).is_ok());
-            assert!(&buf[..].starts_with(power_minus_one_str.as_bytes()));
-            buf.fill(0);
-
-            assert!(encode_bytes(power, &mut buf).is_ok());
-            assert!(&buf[..].starts_with(power_str.as_bytes()));
-            buf.fill(0);
-        }
-
-        // Test cases that failed due to earlier bugs
-        assert!(encode_bytes(691337691337_u64, &mut buf).is_ok());
-        assert!(&buf[..].starts_with(b"CAcoUun"));
-        buf.fill(0);
-
-        assert!(encode_bytes(92202686130861137968548313400401640448_u128, &mut buf).is_ok());
-        assert!(&buf[..].starts_with(b"26tF05fvSIgh0000000000"));
-    }
-
-    #[test]
-    fn test_encode_bytes_buffer_too_small() {
-        let mut buf = [0; 1];
-        assert_eq!(
-            encode_bytes(1337_u16, &mut buf),
-            Err(EncodeError::BufferTooSmall)
-        );
-    }
-
+    // Pure computation tests that don't need allocation
     #[test]
     fn test_digit_count() {
-        // Assume that `digit_count` is a monotonically increasing function and
-        // check that the boundary outputs have the right values
         for pow in 1..22 {
             let this_power = (BASE as u128).pow(pow as u32);
-
             assert_eq!(digit_count(this_power - 1), pow);
             assert_eq!(digit_count(this_power), pow + 1);
         }
-
-        // Check that boundary inputs have the right values
         assert_eq!(digit_count(0), 1);
         assert_eq!(digit_count(1), 1);
         assert_eq!(digit_count(u64::MAX as u128), 11);
@@ -1536,138 +1122,164 @@ mod tests {
     }
 
     #[test]
-    fn test_encode_alternative() {
-        // Test numeric type boundaries
-        assert_eq!(encode_alternative(u128::MAX), "7N42dgm5tFLK9N8MT7fHC7");
-        assert_eq!(encode_alternative(u64::MAX as u128 + 1), "lYGhA16ahyg");
-        assert_eq!(encode_alternative(u64::MAX), "lYGhA16ahyf");
-        assert_eq!(encode_alternative(0_u8), "0");
+    fn test_decode_empty_input() {
+        assert_eq!(_decode(&[]), Err(DecodeError::EmptyInput));
+    }
 
-        // Test base62 length-change boundaries
-        let mut power = 1_u128;
-        let mut power_minus_one_str = String::with_capacity(21);
-        let mut power_str = String::with_capacity(22);
-        power_str.push('1');
-        for _ in 1..22 {
-            power *= BASE as u128;
-            power_minus_one_str.push('Z');
-            power_str.push('0');
+    #[test]
+    fn test_decode_overflow() {
+        let long_input = [b'1'; 23];
+        assert_eq!(_decode(&long_input), Err(DecodeError::ArithmeticOverflow));
+    }
 
-            assert_eq!(encode_alternative(power - 1), power_minus_one_str);
-            assert_eq!(encode_alternative(power), power_str);
-        }
+    #[test]
+    fn test_decode_invalid_char() {
+        assert_eq!(_decode(b"!"), Err(DecodeError::InvalidBase62Byte(b'!', 0)));
+    }
 
-        // Test cases that failed due to earlier bugs
-        assert_eq!(encode_alternative(691337691337_u64), "caCOuUN");
+    #[test]
+    fn test_decode_alternative_empty_input() {
+        assert_eq!(_decode_alternative(&[]), Err(DecodeError::EmptyInput));
+    }
+
+    #[test]
+    fn test_decode_alternative_overflow() {
+        let long_input = [b'1'; 23];
         assert_eq!(
-            encode(92202686130861137968548313400401640448_u128),
-            "26tF05fvSIgh0000000000"
+            _decode_alternative(&long_input),
+            Err(DecodeError::ArithmeticOverflow)
         );
     }
 
     #[test]
-    fn test_encode_alternative_buf() {
-        let mut buf = String::with_capacity(22);
-
-        // Test append functionality
-        buf.push_str("Base62: ");
-        encode_alternative_buf(34051405518_u64, &mut buf);
-        assert_eq!(buf, "Base62: Base62");
-        buf.clear();
-
-        // Test numeric type boundaries
-        encode_alternative_buf(u128::MAX, &mut buf);
-        assert_eq!(buf, "7N42dgm5tFLK9N8MT7fHC7");
-        buf.clear();
-
-        encode_alternative_buf(u64::MAX as u128 + 1, &mut buf);
-        assert_eq!(buf, "lYGhA16ahyg");
-        buf.clear();
-
-        encode_alternative_buf(u64::MAX, &mut buf);
-        assert_eq!(buf, "lYGhA16ahyf");
-        buf.clear();
-
-        encode_alternative_buf(0_u8, &mut buf);
-        assert_eq!(buf, "0");
-        buf.clear();
-
-        // Test base62 length-change boundaries
-        let mut power = 1_u128;
-        let mut power_minus_one_str = String::with_capacity(21);
-        let mut power_str = String::with_capacity(22);
-        power_str.push('1');
-        for _ in 1..22 {
-            power *= BASE as u128;
-            power_minus_one_str.push('Z');
-            power_str.push('0');
-
-            encode_alternative_buf(power - 1, &mut buf);
-            assert_eq!(buf, power_minus_one_str);
-            buf.clear();
-
-            encode_alternative_buf(power, &mut buf);
-            assert_eq!(buf, power_str);
-            buf.clear();
-        }
-
-        // Test cases that failed due to earlier bugs
-        encode_alternative_buf(691337691337_u64, &mut buf);
-        assert_eq!(buf, "caCOuUN");
-        buf.clear();
-
-        encode_alternative_buf(92202686130861137968548313400401640448_u128, &mut buf);
-        assert_eq!(buf, "26Tf05FVsiGH0000000000");
+    fn test_decode_alternative_invalid_char() {
+        assert_eq!(
+            _decode_alternative(b"!"),
+            Err(DecodeError::InvalidBase62Byte(b'!', 0))
+        );
     }
 
-    #[test]
-    fn test_encode_alternative_bytes() {
-        let mut buf = [0; 22];
+    // Tests requiring alloc
+    #[cfg(feature = "alloc")]
+    mod alloc_tests {
+        use alloc::{format, string::ToString};
 
-        // Test numeric type boundaries
-        assert!(encode_alternative_bytes(u128::MAX, &mut buf).is_ok());
-        assert!(&buf[..].starts_with(b"7N42dgm5tFLK9N8MT7fHC7"));
-        buf.fill(0);
+        use super::*;
 
-        assert!(encode_alternative_bytes(u64::MAX as u128 + 1, &mut buf).is_ok());
-        assert!(&buf[..].starts_with(b"lYGhA16ahyg"));
-        buf.fill(0);
+        #[test]
+        fn test_encode() {
+            assert_eq!(encode(u128::MAX), "7n42DGM5Tflk9n8mt7Fhc7");
+            assert_eq!(encode(u64::MAX as u128 + 1), "LygHa16AHYG");
+            assert_eq!(encode(u64::MAX), "LygHa16AHYF");
+            assert_eq!(encode(0_u8), "0");
 
-        assert!(encode_alternative_bytes(u64::MAX, &mut buf).is_ok());
-        assert!(&buf[..].starts_with(b"lYGhA16ahyf"));
-        buf.fill(0);
+            let mut power = 1_u128;
+            let mut power_minus_one_str = String::with_capacity(21);
+            let mut power_str = String::with_capacity(22);
+            power_str.push('1');
+            for _ in 1..22 {
+                power *= BASE as u128;
+                power_minus_one_str.push('z');
+                power_str.push('0');
 
-        assert!(encode_alternative_bytes(0_u8, &mut buf).is_ok());
-        assert!(&buf[..].starts_with(b"0"));
-        buf.fill(0);
-
-        // Test base62 length-change boundaries
-        let mut power = 1_u128;
-        let mut power_minus_one_str = String::with_capacity(21);
-        let mut power_str = String::with_capacity(22);
-        power_str.push('1');
-        for _ in 1..22 {
-            power *= BASE as u128;
-            power_minus_one_str.push('Z');
-            power_str.push('0');
-
-            assert!(encode_alternative_bytes(power - 1, &mut buf).is_ok());
-            assert!(&buf[..].starts_with(power_minus_one_str.as_bytes()));
-            buf.fill(0);
-
-            assert!(encode_alternative_bytes(power, &mut buf).is_ok());
-            assert!(&buf[..].starts_with(power_str.as_bytes()));
-            buf.fill(0);
+                assert_eq!(encode(power - 1), power_minus_one_str);
+                assert_eq!(encode(power), power_str);
+            }
         }
 
-        // Test cases that failed due to earlier bugs
-        assert!(encode_alternative_bytes(691337691337_u64, &mut buf).is_ok());
-        assert!(&buf[..].starts_with(b"caCOuUN"));
-        buf.fill(0);
+        #[test]
+        fn test_encode_buf() {
+            let mut buf = String::new();
 
-        assert!(
-            encode_alternative_bytes(92202686130861137968548313400401640448_u128, &mut buf).is_ok()
-        );
-        assert!(&buf[..].starts_with(b"26Tf05FVsiGH0000000000"));
+            buf.push_str("Base62: ");
+            encode_buf(10622433094_u64, &mut buf);
+            assert_eq!(buf, "Base62: Base62");
+            buf.clear();
+
+            encode_buf(u128::MAX, &mut buf);
+            assert_eq!(buf, "7n42DGM5Tflk9n8mt7Fhc7");
+            buf.clear();
+        }
+
+        #[test]
+        fn test_encode_fmt() {
+            let mut s = String::new();
+            encode_fmt(1337_u32, &mut s).unwrap();
+            assert_eq!(s, "LZ");
+            s.clear();
+
+            encode_fmt(0_u8, &mut s).unwrap();
+            assert_eq!(s, "0");
+        }
+
+        #[test]
+        fn test_encode_alternative() {
+            assert_eq!(encode_alternative(u128::MAX), "7N42dgm5tFLK9N8MT7fHC7");
+            assert_eq!(encode_alternative(u64::MAX as u128 + 1), "lYGhA16ahyg");
+            assert_eq!(encode_alternative(u64::MAX), "lYGhA16ahyf");
+            assert_eq!(encode_alternative(0_u8), "0");
+        }
+
+        #[test]
+        fn test_encode_alternative_buf() {
+            let mut buf = String::new();
+            buf.push_str("Base62: ");
+            encode_alternative_buf(34051405518_u64, &mut buf);
+            assert_eq!(buf, "Base62: Base62");
+        }
+
+        #[test]
+        fn test_encode_alternative_fmt() {
+            let mut s = String::new();
+            encode_alternative_fmt(1337_u32, &mut s).unwrap();
+            assert_eq!(s, "lz");
+        }
+
+        #[test]
+        fn test_decode() {
+            assert_eq!(
+                decode("00001000000000000000000000"),
+                Ok((BASE as u128).pow(21))
+            );
+            assert_eq!(decode("7n42DGM5Tflk9n8mt7Fhc7"), Ok(u128::MAX));
+            assert_eq!(decode("0"), Ok(0));
+            assert_eq!(decode("CAcoUun"), Ok(691337691337));
+        }
+
+        #[test]
+        fn test_decode_alternative() {
+            assert_eq!(decode_alternative("7N42dgm5tFLK9N8MT7fHC7"), Ok(u128::MAX));
+            assert_eq!(decode_alternative("0"), Ok(0));
+            assert_eq!(decode_alternative("caCOuUN"), Ok(691337691337));
+        }
+    }
+
+    // Tests requiring std
+    #[cfg(feature = "std")]
+    mod std_tests {
+        use super::*;
+        use std::io::Write;
+
+        #[test]
+        fn test_encode_io() {
+            let mut output = Vec::new();
+            encode_io(1337_u32, &mut output).unwrap();
+            assert_eq!(output, b"LZ");
+            output.clear();
+
+            encode_io(0_u8, &mut output).unwrap();
+            assert_eq!(output, b"0");
+        }
+
+        #[test]
+        fn test_encode_alternative_io() {
+            let mut output = Vec::new();
+            encode_alternative_io(1337_u32, &mut output).unwrap();
+            assert_eq!(output, b"lz");
+            output.clear();
+
+            encode_alternative_io(0_u8, &mut output).unwrap();
+            assert_eq!(output, b"0");
+        }
     }
 }

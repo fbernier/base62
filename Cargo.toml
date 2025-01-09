@@ -1,11 +1,9 @@
 [package]
 name = "base62"
-version = "2.1.0"
+version = "2.1.1"
 authors = [
     "François Bernier <frankbernier@gmail.com>",
     "Chai T. Rex <ChaiTRex@users.noreply.github.com>",
-    "Kevin Darlington <kevin@outroot.com>",
-    "Christopher Tarquini <code@tarq.io>",
 ]
 edition = "2018"
 description = "A Base62 encoding/decoding library"
