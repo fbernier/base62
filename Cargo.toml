@@ -33,3 +33,4 @@ rand = "0.8"
 [[bench]]
 name = "base62"
 harness = false
+required-features = ["alloc"]

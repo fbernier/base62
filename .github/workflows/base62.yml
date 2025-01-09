@@ -19,8 +19,12 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
       - name: Rust Cache
         uses: Swatinem/rust-cache@v2
-      - name: Run cargo check
-        run: cargo check --all-targets --all-features
+      - name: Run cargo check (no_std)
+        run: cargo check --all-targets --no-default-features
+      - name: Run cargo check (default/alloc)
+        run: cargo check --all-targets
+      - name: Run cargo check (std)
+        run: cargo check --all-targets --features std
 
   test:
     name: Test Suite
@@ -34,16 +38,23 @@ jobs:
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
-      - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@stable
         with:
           toolchain: ${{ matrix.rust }}
-      - name: Rust Cache
-        uses: Swatinem/rust-cache@v2
-      - name: Run tests
-        run: cargo test --all-targets --all-features
-      - name: Run doc tests
-        run: cargo test --doc --all-features
+      - uses: Swatinem/rust-cache@v2
+      - uses: taiki-e/install-action@nextest
+      - name: Run tests (no_std)
+        run: cargo nextest run --no-default-features
+      - name: Run tests (default/alloc)
+        run: cargo nextest run
+      - name: Run tests (std)
+        run: cargo nextest run --features std
+      - name: Run doc tests (no_std)
+        run: cargo test --doc --no-default-features
+      - name: Run doc tests (default/alloc)
+        run: cargo test --doc
+      - name: Run doc tests (std)
+        run: cargo test --doc --features std
 
   fmt:
     name: Rustfmt
@@ -68,8 +79,12 @@ jobs:
           components: clippy
       - name: Rust Cache
         uses: Swatinem/rust-cache@v2
-      - name: Run clippy
-        run: cargo clippy --all-targets --all-features
+      - name: Run clippy (no_std)
+        run: cargo clippy --all-targets --no-default-features
+      - name: Run clippy (default/alloc)
+        run: cargo clippy --all-targets
+      - name: Run clippy (std)
+        run: cargo clippy --all-targets --features std
 
   docs:
     name: Docs
@@ -80,7 +95,15 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
       - name: Rust Cache
         uses: Swatinem/rust-cache@v2
-      - name: Check documentation
+      - name: Check documentation (no_std)
+        env:
+          RUSTDOCFLAGS: "-D warnings"
+        run: cargo doc --no-deps --document-private-items --no-default-features
+      - name: Check documentation (default/alloc)
         env:
           RUSTDOCFLAGS: "-D warnings"
         run: cargo doc --no-deps --document-private-items
+      - name: Check documentation (std)
+        env:
+          RUSTDOCFLAGS: "-D warnings"
+        run: cargo doc --no-deps --document-private-items --features std
