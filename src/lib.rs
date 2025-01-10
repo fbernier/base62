@@ -46,6 +46,83 @@ const BASE_TO_19: u128 = BASE_TO_18 * BASE as u128;
 const BASE_TO_20: u128 = BASE_TO_19 * BASE as u128;
 const BASE_TO_21: u128 = BASE_TO_20 * BASE as u128;
 
+struct Base62Tables {
+    standard: [u8; 62],
+    alternative: [u8; 62],
+    #[allow(dead_code)]
+    decode_standard: [u8; 256],
+    #[allow(dead_code)]
+    decode_alternative: [u8; 256],
+}
+
+impl Base62Tables {
+    const fn new() -> Self {
+        // Standard encoding table (0-9A-Za-z)
+        const STANDARD: [u8; 62] = [
+            b'0', b'1', b'2', b'3', b'4', b'5', b'6', b'7', b'8', b'9', b'A', b'B', b'C', b'D',
+            b'E', b'F', b'G', b'H', b'I', b'J', b'K', b'L', b'M', b'N', b'O', b'P', b'Q', b'R',
+            b'S', b'T', b'U', b'V', b'W', b'X', b'Y', b'Z', b'a', b'b', b'c', b'd', b'e', b'f',
+            b'g', b'h', b'i', b'j', b'k', b'l', b'm', b'n', b'o', b'p', b'q', b'r', b's', b't',
+            b'u', b'v', b'w', b'x', b'y', b'z',
+        ];
+
+        // Alternative encoding table (0-9a-zA-Z)
+        const ALTERNATIVE: [u8; 62] = [
+            b'0', b'1', b'2', b'3', b'4', b'5', b'6', b'7', b'8', b'9', b'a', b'b', b'c', b'd',
+            b'e', b'f', b'g', b'h', b'i', b'j', b'k', b'l', b'm', b'n', b'o', b'p', b'q', b'r',
+            b's', b't', b'u', b'v', b'w', b'x', b'y', b'z', b'A', b'B', b'C', b'D', b'E', b'F',
+            b'G', b'H', b'I', b'J', b'K', b'L', b'M', b'N', b'O', b'P', b'Q', b'R', b'S', b'T',
+            b'U', b'V', b'W', b'X', b'Y', b'Z',
+        ];
+
+        let mut decode_standard = [255u8; 256];
+        let mut decode_alternative = [255u8; 256];
+
+        // Populate standard decoding table
+        let mut i = 0u8;
+        while i < 10 {
+            decode_standard[(b'0' + i) as usize] = i;
+            i += 1;
+        }
+        let mut i = 0u8;
+        while i < 26 {
+            decode_standard[(b'A' + i) as usize] = i + 10;
+            i += 1;
+        }
+        let mut i = 0u8;
+        while i < 26 {
+            decode_standard[(b'a' + i) as usize] = i + 36;
+            i += 1;
+        }
+
+        // Populate alternative decoding table
+        let mut i = 0u8;
+        while i < 10 {
+            decode_alternative[(b'0' + i) as usize] = i;
+            i += 1;
+        }
+        let mut i = 0u8;
+        while i < 26 {
+            decode_alternative[(b'a' + i) as usize] = i + 10;
+            i += 1;
+        }
+        let mut i = 0u8;
+        while i < 26 {
+            decode_alternative[(b'A' + i) as usize] = i + 36;
+            i += 1;
+        }
+
+        Self {
+            standard: STANDARD,
+            alternative: ALTERNATIVE,
+            decode_standard,
+            decode_alternative,
+        }
+    }
+}
+
+static TABLES: Base62Tables = Base62Tables::new();
+
 /// Indicates the cause of a decoding failure in base62 decoding operations.
 #[derive(Copy, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub enum DecodeError {
@@ -254,267 +331,8 @@ pub(crate) fn digit_count(n: u128) -> usize {
 }
 
 macro_rules! internal_decoder_loop_body {
-    ($result:ident, $ch:ident, $i:ident, $numeric_start_value:literal, $uppercase_start_value:literal, $lowercase_start_value:literal) => {
-        const CHARACTER_VALUES: [u8; 256] = [
-            255,
-            255,
-            255,
-            255,
-            255,
-            255,
-            255,
-            255,
-            255,
-            255,
-            255,
-            255,
-            255,
-            255,
-            255,
-            255,
-            255,
-            255,
-            255,
-            255,
-            255,
-            255,
-            255,
-            255,
-            255,
-            255,
-            255,
-            255,
-            255,
-            255,
-            255,
-            255,
-            255,
-            255,
-            255,
-            255,
-            255,
-            255,
-            255,
-            255,
-            255,
-            255,
-            255,
-            255,
-            255,
-            255,
-            255,
-            255,
-            $numeric_start_value + 0,
-            $numeric_start_value + 1,
-            $numeric_start_value + 2,
-            $numeric_start_value + 3,
-            $numeric_start_value + 4,
-            $numeric_start_value + 5,
-            $numeric_start_value + 6,
-            $numeric_start_value + 7,
-            $numeric_start_value + 8,
-            $numeric_start_value + 9,
-            255,
-            255,
-            255,
-            255,
-            255,
-            255,
-            255,
-            $uppercase_start_value + 0,
-            $uppercase_start_value + 1,
-            $uppercase_start_value + 2,
-            $uppercase_start_value + 3,
-            $uppercase_start_value + 4,
-            $uppercase_start_value + 5,
-            $uppercase_start_value + 6,
-            $uppercase_start_value + 7,
-            $uppercase_start_value + 8,
-            $uppercase_start_value + 9,
-            $uppercase_start_value + 10,
-            $uppercase_start_value + 11,
-            $uppercase_start_value + 12,
-            $uppercase_start_value + 13,
-            $uppercase_start_value + 14,
-            $uppercase_start_value + 15,
-            $uppercase_start_value + 16,
-            $uppercase_start_value + 17,
-            $uppercase_start_value + 18,
-            $uppercase_start_value + 19,
-            $uppercase_start_value + 20,
-            $uppercase_start_value + 21,
-            $uppercase_start_value + 22,
-            $uppercase_start_value + 23,
-            $uppercase_start_value + 24,
-            $uppercase_start_value + 25,
-            255,
-            255,
-            255,
-            255,
-            255,
-            255,
-            $lowercase_start_value + 0,
-            $lowercase_start_value + 1,
-            $lowercase_start_value + 2,
-            $lowercase_start_value + 3,
-            $lowercase_start_value + 4,
-            $lowercase_start_value + 5,
-            $lowercase_start_value + 6,
-            $lowercase_start_value + 7,
-            $lowercase_start_value + 8,
-            $lowercase_start_value + 9,
-            $lowercase_start_value + 10,
-            $lowercase_start_value + 11,
-            $lowercase_start_value + 12,
-            $lowercase_start_value + 13,
-            $lowercase_start_value + 14,
-            $lowercase_start_value + 15,
-            $lowercase_start_value + 16,
-            $lowercase_start_value + 17,
-            $lowercase_start_value + 18,
-            $lowercase_start_value + 19,
-            $lowercase_start_value + 20,
-            $lowercase_start_value + 21,
-            $lowercase_start_value + 22,
-            $lowercase_start_value + 23,
-            $lowercase_start_value + 24,
-            $lowercase_start_value + 25,
-            255,
-            255,
-            255,
-            255,
-            255,
-            255,
-            255,
-            255,
-            255,
-            255,
-            255,
-            255,
-            255,
-            255,
-            255,
-            255,
-            255,
-            255,
-            255,
-            255,
-            255,
-            255,
-            255,
-            255,
-            255,
-            255,
-            255,
-            255,
-            255,
-            255,
-            255,
-            255,
-            255,
-            255,
-            255,
-            255,
-            255,
-            255,
-            255,
-            255,
-            255,
-            255,
-            255,
-            255,
-            255,
-            255,
-            255,
-            255,
-            255,
-            255,
-            255,
-            255,
-            255,
-            255,
-            255,
-            255,
-            255,
-            255,
-            255,
-            255,
-            255,
-            255,
-            255,
-            255,
-            255,
-            255,
-            255,
-            255,
-            255,
-            255,
-            255,
-            255,
-            255,
-            255,
-            255,
-            255,
-            255,
-            255,
-            255,
-            255,
-            255,
-            255,
-            255,
-            255,
-            255,
-            255,
-            255,
-            255,
-            255,
-            255,
-            255,
-            255,
-            255,
-            255,
-            255,
-            255,
-            255,
-            255,
-            255,
-            255,
-            255,
-            255,
-            255,
-            255,
-            255,
-            255,
-            255,
-            255,
-            255,
-            255,
-            255,
-            255,
-            255,
-            255,
-            255,
-            255,
-            255,
-            255,
-            255,
-            255,
-            255,
-            255,
-            255,
-            255,
-            255,
-            255,
-            255,
-            255,
-            255,
-            255,
-            255,
-            255,
-            255,
-        ];
-
-        let char_value = *unsafe { CHARACTER_VALUES.get_unchecked($ch as usize) };
+    ($result:ident, $ch:ident, $i:ident, $table:expr) => {
+        let char_value = *unsafe { $table.get_unchecked($ch as usize) };
         if char_value == 255 {
             return Err(DecodeError::InvalidBase62Byte($ch, $i));
         }
@@ -523,7 +341,7 @@ macro_rules! internal_decoder_loop_body {
 }
 
 macro_rules! internal_decoder_fn {
-    ($fn_name:ident, $numeric_start_value:literal, $uppercase_start_value:literal, $lowercase_start_value:literal) => {
+    ($fn_name:ident, $decode_table:expr) => {
         fn $fn_name(mut input: &[u8]) -> Result<u128, DecodeError> {
             if input.is_empty() {
                 return Err(DecodeError::EmptyInput);
@@ -535,6 +353,7 @@ macro_rules! internal_decoder_fn {
                 input = &input[1..];
                 chopped_count += 1;
             }
+
             let input_len = input.len();
             if input_len <= 22 {
                 const MULTIPLIERS: [(u128, u64); 23] = [
@@ -569,14 +388,7 @@ macro_rules! internal_decoder_fn {
 
                 let mut result_a = 0_u64;
                 for (i, ch) in iter.by_ref().take(10) {
-                    internal_decoder_loop_body!(
-                        result_a,
-                        ch,
-                        i,
-                        $numeric_start_value,
-                        $uppercase_start_value,
-                        $lowercase_start_value
-                    );
+                    internal_decoder_loop_body!(result_a, ch, i, $decode_table);
                 }
                 let result_a = (result_a as u128)
                     .checked_mul(a_power)
@@ -584,27 +396,13 @@ macro_rules! internal_decoder_fn {
 
                 let mut result_b = 0_u64;
                 for (i, ch) in iter.by_ref().take(10) {
-                    internal_decoder_loop_body!(
-                        result_b,
-                        ch,
-                        i,
-                        $numeric_start_value,
-                        $uppercase_start_value,
-                        $lowercase_start_value
-                    );
+                    internal_decoder_loop_body!(result_b, ch, i, $decode_table);
                 }
                 let result_b = (result_b as u128).wrapping_mul(b_power as u128);
 
                 let mut result_c = 0_u64;
                 for (i, ch) in iter {
-                    internal_decoder_loop_body!(
-                        result_c,
-                        ch,
-                        i,
-                        $numeric_start_value,
-                        $uppercase_start_value,
-                        $lowercase_start_value
-                    );
+                    internal_decoder_loop_body!(result_c, ch, i, $decode_table);
                 }
                 let result_c = result_c as u128;
 
@@ -613,104 +411,31 @@ macro_rules! internal_decoder_fn {
                     .ok_or(DecodeError::ArithmeticOverflow)?;
                 Ok(result)
             } else {
-                Err(input
-                    .iter()
-                    .position(|b| !b.is_ascii_alphanumeric())
-                    .map(|i| {
-                        DecodeError::InvalidBase62Byte(input[i], chopped_count.wrapping_add(i))
-                    })
-                    .unwrap_or(DecodeError::ArithmeticOverflow))
+                Err(DecodeError::ArithmeticOverflow)
             }
         }
     };
 }
 
-internal_decoder_fn!(_decode, 0, 10, 36);
-internal_decoder_fn!(_decode_alternative, 0, 36, 10);
+internal_decoder_fn!(_decode, TABLES.decode_standard);
+internal_decoder_fn!(_decode_alternative, TABLES.decode_alternative);
 
+// Modified encoder macro to use table lookups
 macro_rules! internal_encoder_fn {
-    ($fn_name:ident, $numeric_offset:literal, $first_letters_offset:literal, $last_letters_offset:literal) => {
+    ($fn_name:ident, $encode_table:expr) => {
         unsafe fn $fn_name(mut num: u128, digits: usize, buf: &mut [u8]) -> usize {
             let mut write_idx = digits;
-
             let mut digit_index = 0_usize;
             let mut u64_num = (num % BASE_TO_10) as u64;
             num /= BASE_TO_10;
-            loop {
-                const VALUE_CHARACTERS: [u8; 62] = [
-                    $numeric_offset,
-                    $numeric_offset + 1,
-                    $numeric_offset + 2,
-                    $numeric_offset + 3,
-                    $numeric_offset + 4,
-                    $numeric_offset + 5,
-                    $numeric_offset + 6,
-                    $numeric_offset + 7,
-                    $numeric_offset + 8,
-                    $numeric_offset + 9,
-                    $first_letters_offset,
-                    $first_letters_offset + 1,
-                    $first_letters_offset + 2,
-                    $first_letters_offset + 3,
-                    $first_letters_offset + 4,
-                    $first_letters_offset + 5,
-                    $first_letters_offset + 6,
-                    $first_letters_offset + 7,
-                    $first_letters_offset + 8,
-                    $first_letters_offset + 9,
-                    $first_letters_offset + 10,
-                    $first_letters_offset + 11,
-                    $first_letters_offset + 12,
-                    $first_letters_offset + 13,
-                    $first_letters_offset + 14,
-                    $first_letters_offset + 15,
-                    $first_letters_offset + 16,
-                    $first_letters_offset + 17,
-                    $first_letters_offset + 18,
-                    $first_letters_offset + 19,
-                    $first_letters_offset + 20,
-                    $first_letters_offset + 21,
-                    $first_letters_offset + 22,
-                    $first_letters_offset + 23,
-                    $first_letters_offset + 24,
-                    $first_letters_offset + 25,
-                    $last_letters_offset,
-                    $last_letters_offset + 1,
-                    $last_letters_offset + 2,
-                    $last_letters_offset + 3,
-                    $last_letters_offset + 4,
-                    $last_letters_offset + 5,
-                    $last_letters_offset + 6,
-                    $last_letters_offset + 7,
-                    $last_letters_offset + 8,
-                    $last_letters_offset + 9,
-                    $last_letters_offset + 10,
-                    $last_letters_offset + 11,
-                    $last_letters_offset + 12,
-                    $last_letters_offset + 13,
-                    $last_letters_offset + 14,
-                    $last_letters_offset + 15,
-                    $last_letters_offset + 16,
-                    $last_letters_offset + 17,
-                    $last_letters_offset + 18,
-                    $last_letters_offset + 19,
-                    $last_letters_offset + 20,
-                    $last_letters_offset + 21,
-                    $last_letters_offset + 22,
-                    $last_letters_offset + 23,
-                    $last_letters_offset + 24,
-                    $last_letters_offset + 25,
-                ];
 
+            while digit_index < digits {
                 write_idx = write_idx.wrapping_sub(1);
-                unsafe {
-                    let ch = *VALUE_CHARACTERS.get_unchecked((u64_num % BASE) as usize);
-                    *buf.get_unchecked_mut(write_idx) = ch;
-                }
+                *buf.get_unchecked_mut(write_idx) =
+                    *$encode_table.get_unchecked((u64_num % BASE) as usize);
 
                 digit_index = digit_index.wrapping_add(1);
                 match digit_index {
-                    _ if digit_index == digits => break,
                     10 => {
                         u64_num = (num % BASE_TO_10) as u64;
                         num /= BASE_TO_10;
@@ -726,12 +451,12 @@ macro_rules! internal_encoder_fn {
 }
 
 unsafe fn _encode_buf(num: u128, digits: usize, buf: &mut [u8]) -> usize {
-    internal_encoder_fn!(_encode_bytes_impl, b'0', b'A', b'a');
+    internal_encoder_fn!(_encode_bytes_impl, TABLES.standard);
     _encode_bytes_impl(num, digits, buf)
 }
 
 unsafe fn _encode_alternative_buf(num: u128, digits: usize, buf: &mut [u8]) -> usize {
-    internal_encoder_fn!(_encode_alternative_bytes_impl, b'0', b'a', b'A');
+    internal_encoder_fn!(_encode_alternative_bytes_impl, TABLES.alternative);
     _encode_alternative_bytes_impl(num, digits, buf)
 }
 
