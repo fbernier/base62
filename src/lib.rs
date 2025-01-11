@@ -49,9 +49,7 @@ const BASE_TO_21: u128 = BASE_TO_20 * BASE as u128;
 struct Base62Tables {
     standard: [u8; 62],
     alternative: [u8; 62],
-    #[allow(dead_code)]
     decode_standard: [u8; 256],
-    #[allow(dead_code)]
     decode_alternative: [u8; 256],
 }
 
@@ -175,7 +173,6 @@ impl core::error::Error for EncodeError {}
 #[cfg(feature = "std")]
 impl std::error::Error for EncodeError {}
 
-// You'll also need to implement std::fmt::Display for EncodeError since it's required for Error
 impl fmt::Display for EncodeError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
@@ -330,134 +327,164 @@ pub(crate) fn digit_count(n: u128) -> usize {
     }
 }
 
-macro_rules! internal_decoder_loop_body {
-    ($result:ident, $ch:ident, $i:ident, $table:expr) => {
-        let char_value = *unsafe { $table.get_unchecked($ch as usize) };
-        if char_value == 255 {
-            return Err(DecodeError::InvalidBase62Byte($ch, $i));
-        }
-        $result = $result.wrapping_mul(BASE).wrapping_add(char_value as u64);
-    };
+#[inline(always)]
+fn decode_char(result: &mut u64, ch: u8, i: usize, table: &[u8; 256]) -> Result<(), DecodeError> {
+    let char_value = table[ch as usize];
+    if char_value == 255 {
+        return Err(DecodeError::InvalidBase62Byte(ch, i));
+    }
+    *result = result.wrapping_mul(BASE).wrapping_add(char_value as u64);
+    Ok(())
 }
 
-macro_rules! internal_decoder_fn {
-    ($fn_name:ident, $decode_table:expr) => {
-        fn $fn_name(mut input: &[u8]) -> Result<u128, DecodeError> {
-            if input.is_empty() {
-                return Err(DecodeError::EmptyInput);
-            }
+// Common decoding function
+#[inline]
+fn decode_impl(mut input: &[u8], decode_table: &[u8; 256]) -> Result<u128, DecodeError> {
+    if input.is_empty() {
+        return Err(DecodeError::EmptyInput);
+    }
 
-            // Remove leading zeroes
-            let mut chopped_count = 0_usize;
-            while let Option::Some(b'0') = input.first() {
-                input = &input[1..];
-                chopped_count += 1;
-            }
+    // Remove leading zeroes
+    let mut chopped_count = 0_usize;
+    while let Option::Some(b'0') = input.first() {
+        input = &input[1..];
+        chopped_count += 1;
+    }
 
-            let input_len = input.len();
-            if input_len <= 22 {
-                const MULTIPLIERS: [(u128, u64); 23] = [
-                    (0, 0),
-                    (1, 1),
-                    (1, 1),
-                    (1, 1),
-                    (1, 1),
-                    (1, 1),
-                    (1, 1),
-                    (1, 1),
-                    (1, 1),
-                    (1, 1),
-                    (1, 1),
-                    (BASE as u128, 1),
-                    (BASE_TO_2 as u128, 1),
-                    (BASE_TO_3 as u128, 1),
-                    (BASE_TO_4 as u128, 1),
-                    (BASE_TO_5 as u128, 1),
-                    (BASE_TO_6 as u128, 1),
-                    (BASE_TO_7 as u128, 1),
-                    (BASE_TO_8 as u128, 1),
-                    (BASE_TO_9 as u128, 1),
-                    (BASE_TO_10, 1),
-                    (BASE_TO_11, BASE),
-                    (BASE_TO_12, BASE_TO_2),
-                ];
+    let input_len = input.len();
+    if input_len <= 22 {
+        const MULTIPLIERS: [(u128, u64); 23] = [
+            (0, 0),
+            (1, 1),
+            (1, 1),
+            (1, 1),
+            (1, 1),
+            (1, 1),
+            (1, 1),
+            (1, 1),
+            (1, 1),
+            (1, 1),
+            (1, 1),
+            (BASE as u128, 1),
+            (BASE_TO_2 as u128, 1),
+            (BASE_TO_3 as u128, 1),
+            (BASE_TO_4 as u128, 1),
+            (BASE_TO_5 as u128, 1),
+            (BASE_TO_6 as u128, 1),
+            (BASE_TO_7 as u128, 1),
+            (BASE_TO_8 as u128, 1),
+            (BASE_TO_9 as u128, 1),
+            (BASE_TO_10, 1),
+            (BASE_TO_11, BASE),
+            (BASE_TO_12, BASE_TO_2),
+        ];
 
-                let (a_power, b_power) = MULTIPLIERS[input_len];
+        let (a_power, b_power) = MULTIPLIERS[input_len];
 
-                let mut iter = (chopped_count..).zip(input.iter().map(|&ch| ch));
+        let mut iter = (chopped_count..).zip(input.iter().copied());
 
-                let mut result_a = 0_u64;
-                for (i, ch) in iter.by_ref().take(10) {
-                    internal_decoder_loop_body!(result_a, ch, i, $decode_table);
-                }
-                let result_a = (result_a as u128)
-                    .checked_mul(a_power)
-                    .ok_or(DecodeError::ArithmeticOverflow)?;
-
-                let mut result_b = 0_u64;
-                for (i, ch) in iter.by_ref().take(10) {
-                    internal_decoder_loop_body!(result_b, ch, i, $decode_table);
-                }
-                let result_b = (result_b as u128).wrapping_mul(b_power as u128);
-
-                let mut result_c = 0_u64;
-                for (i, ch) in iter {
-                    internal_decoder_loop_body!(result_c, ch, i, $decode_table);
-                }
-                let result_c = result_c as u128;
-
-                let result = result_a
-                    .checked_add(result_b.wrapping_add(result_c))
-                    .ok_or(DecodeError::ArithmeticOverflow)?;
-                Ok(result)
-            } else {
-                Err(DecodeError::ArithmeticOverflow)
-            }
+        let mut result_a = 0_u64;
+        for (i, ch) in iter.by_ref().take(10) {
+            decode_char(&mut result_a, ch, i, decode_table)?;
         }
-    };
+        let result_a = (result_a as u128)
+            .checked_mul(a_power)
+            .ok_or(DecodeError::ArithmeticOverflow)?;
+
+        let mut result_b = 0_u64;
+        for (i, ch) in iter.by_ref().take(10) {
+            decode_char(&mut result_b, ch, i, decode_table)?;
+        }
+        let result_b = (result_b as u128).wrapping_mul(b_power as u128);
+
+        let mut result_c = 0_u64;
+        for (i, ch) in iter {
+            decode_char(&mut result_c, ch, i, decode_table)?;
+        }
+        let result_c = result_c as u128;
+
+        let result = result_a
+            .checked_add(result_b.wrapping_add(result_c))
+            .ok_or(DecodeError::ArithmeticOverflow)?;
+        Ok(result)
+    } else {
+        Err(DecodeError::ArithmeticOverflow)
+    }
 }
 
-internal_decoder_fn!(_decode, TABLES.decode_standard);
-internal_decoder_fn!(_decode_alternative, TABLES.decode_alternative);
+/// Decodes a base62 byte slice or an equivalent, like a `String`,
+/// using the standard digit ordering (0 to 9, then A to Z, then a to z).
+///
+/// Returns a [`Result`] containing the decoded
+/// [`u128`] or a [`DecodeError`].
+///
+/// # Examples
+///
+/// ```rust
+/// extern crate base62;
+///
+/// let value = base62::decode("rustlang").unwrap();
+/// assert_eq!(value, 189876682536016);
+/// ```
+pub fn decode<T: AsRef<[u8]>>(input: T) -> Result<u128, DecodeError> {
+    decode_impl(input.as_ref(), &TABLES.decode_standard)
+}
 
-// Modified encoder macro to use table lookups
-macro_rules! internal_encoder_fn {
-    ($fn_name:ident, $encode_table:expr) => {
-        unsafe fn $fn_name(mut num: u128, digits: usize, buf: &mut [u8]) -> usize {
-            let mut write_idx = digits;
-            let mut digit_index = 0_usize;
-            let mut u64_num = (num % BASE_TO_10) as u64;
-            num /= BASE_TO_10;
+/// Decodes a base62 byte slice or an equivalent, like a `String`,
+/// using the alternative digit ordering (0 to 9, then a to z, then A to Z) with lowercase
+/// letters before uppercase letters.
+///
+/// Returns a [`Result`] containing the decoded
+/// [`u128`] or a [`DecodeError`].
+///
+/// # Examples
+///
+/// ```rust
+/// extern crate base62;
+///
+/// let value = base62::decode_alternative("rustlang").unwrap();
+/// assert_eq!(value, 96813686712946);
+/// ```
+pub fn decode_alternative<T: AsRef<[u8]>>(input: T) -> Result<u128, DecodeError> {
+    decode_impl(input.as_ref(), &TABLES.decode_alternative)
+}
 
-            while digit_index < digits {
-                write_idx = write_idx.wrapping_sub(1);
-                *buf.get_unchecked_mut(write_idx) =
-                    *$encode_table.get_unchecked((u64_num % BASE) as usize);
+// Common encoding function
+unsafe fn encode_impl(
+    mut num: u128,
+    digits: usize,
+    buf: &mut [u8],
+    encode_table: &[u8; 62],
+) -> usize {
+    let mut write_idx = digits;
+    let mut digit_index = 0_usize;
+    let mut u64_num = (num % BASE_TO_10) as u64;
+    num /= BASE_TO_10;
 
-                digit_index = digit_index.wrapping_add(1);
-                match digit_index {
-                    10 => {
-                        u64_num = (num % BASE_TO_10) as u64;
-                        num /= BASE_TO_10;
-                    }
-                    20 => u64_num = num as u64,
-                    _ => u64_num /= BASE,
-                }
+    while digit_index < digits {
+        write_idx = write_idx.wrapping_sub(1);
+        *buf.get_unchecked_mut(write_idx) = *encode_table.get_unchecked((u64_num % BASE) as usize);
+
+        digit_index = digit_index.wrapping_add(1);
+        match digit_index {
+            10 => {
+                u64_num = (num % BASE_TO_10) as u64;
+                num /= BASE_TO_10;
             }
-
-            digits
+            20 => u64_num = num as u64,
+            _ => u64_num /= BASE,
         }
-    };
+    }
+
+    digits
 }
 
 unsafe fn _encode_buf(num: u128, digits: usize, buf: &mut [u8]) -> usize {
-    internal_encoder_fn!(_encode_bytes_impl, TABLES.standard);
-    _encode_bytes_impl(num, digits, buf)
+    encode_impl(num, digits, buf, &TABLES.standard)
 }
 
 unsafe fn _encode_alternative_buf(num: u128, digits: usize, buf: &mut [u8]) -> usize {
-    internal_encoder_fn!(_encode_alternative_bytes_impl, TABLES.alternative);
-    _encode_alternative_bytes_impl(num, digits, buf)
+    encode_impl(num, digits, buf, &TABLES.alternative)
 }
 
 #[cfg(feature = "alloc")]
@@ -641,43 +668,6 @@ mod alloc_support {
 
         Ok(digits)
     }
-
-    /// Decodes a base62 byte slice or an equivalent, like a [`String`],
-    /// using the standard digit ordering (0 to 9, then A to Z, then a to z).
-    ///
-    /// Returns a [`Result`] containing the decoded
-    /// [`u128`] or a [`DecodeError`].
-    ///
-    /// # Examples
-    ///
-    /// ```rust
-    /// extern crate base62;
-    ///
-    /// let value = base62::decode("rustlang").unwrap();
-    /// assert_eq!(value, 189876682536016);
-    /// ```
-    pub fn decode<T: AsRef<[u8]>>(input: T) -> Result<u128, DecodeError> {
-        _decode(input.as_ref())
-    }
-
-    /// Decodes a base62 byte slice or an equivalent, like a [`String`],
-    /// using the alternative digit ordering (0 to 9, then a to z, then A to Z) with lowercase
-    /// letters before uppercase letters.
-    ///
-    /// Returns a [`Result`] containing the decoded
-    /// [`u128`] or a [`DecodeError`].
-    ///
-    /// # Examples
-    ///
-    /// ```rust
-    /// extern crate base62;
-    ///
-    /// let value = base62::decode_alternative("rustlang").unwrap();
-    /// assert_eq!(value, 96813686712946);
-    /// ```
-    pub fn decode_alternative<T: AsRef<[u8]>>(input: T) -> Result<u128, DecodeError> {
-        _decode_alternative(input.as_ref())
-    }
 }
 
 #[cfg(feature = "alloc")]
@@ -823,30 +813,30 @@ mod tests {
 
     #[test]
     fn test_decode_empty_input() {
-        assert_eq!(_decode(&[]), Err(DecodeError::EmptyInput));
+        assert_eq!(decode([]), Err(DecodeError::EmptyInput));
     }
 
     #[test]
     fn test_decode_overflow() {
         let long_input = [b'1'; 23];
-        assert_eq!(_decode(&long_input), Err(DecodeError::ArithmeticOverflow));
+        assert_eq!(decode(long_input), Err(DecodeError::ArithmeticOverflow));
     }
 
     #[test]
     fn test_decode_invalid_char() {
-        assert_eq!(_decode(b"!"), Err(DecodeError::InvalidBase62Byte(b'!', 0)));
+        assert_eq!(decode(b"!"), Err(DecodeError::InvalidBase62Byte(b'!', 0)));
     }
 
     #[test]
     fn test_decode_alternative_empty_input() {
-        assert_eq!(_decode_alternative(&[]), Err(DecodeError::EmptyInput));
+        assert_eq!(decode_alternative([]), Err(DecodeError::EmptyInput));
     }
 
     #[test]
     fn test_decode_alternative_overflow() {
         let long_input = [b'1'; 23];
         assert_eq!(
-            _decode_alternative(&long_input),
+            decode_alternative(long_input),
             Err(DecodeError::ArithmeticOverflow)
         );
     }
@@ -854,7 +844,7 @@ mod tests {
     #[test]
     fn test_decode_alternative_invalid_char() {
         assert_eq!(
-            _decode_alternative(b"!"),
+            decode_alternative(b"!"),
             Err(DecodeError::InvalidBase62Byte(b'!', 0))
         );
     }
