@@ -412,6 +412,83 @@ fn decode_impl(mut input: &[u8], decode_table: &[u8; 256]) -> Result<u128, Decod
     }
 }
 
+/// Encodes an unsigned integer into base62, using the standard digit ordering
+/// (0 to 9, then A to Z, then a to z), and writes it to the passed buffer.
+///
+/// The return value is the number of bytes written to the buffer.
+///
+/// # Safety
+/// - To encode all possible values of u128, the buffer must be at least 22 bytes long. However
+///   a smaller buffer may be used if the value to be encoded is known to be smaller.
+///   Base62 encoding adds 37.5% overhead to the size of the input.
+/// - The remaining end of the buffer is left untouched. It's up to the caller to zero it using
+///   the returned len if they want to.
+///
+/// # Example
+///
+/// ```rust
+/// extern crate base62;
+///
+/// let mut buf = [0; 22];
+/// base62::encode_bytes(1337_u32, &mut buf);
+/// assert_eq!(&buf[..2], b"LZ");
+/// ```
+pub fn encode_bytes<T: Into<u128>>(num: T, buf: &mut [u8]) -> Result<usize, EncodeError> {
+    let num = num.into();
+    let digits = digit_count(num);
+
+    if buf.len() < digits {
+        return Err(EncodeError::BufferTooSmall);
+    }
+
+    unsafe {
+        let len = _encode_buf(num, digits, &mut buf[..digits]);
+        debug_assert_eq!(len, digits);
+    }
+
+    Ok(digits)
+}
+
+/// Encodes an unsigned integer into base62, using the alternative digit ordering
+/// (0 to 9, then a to z, then A to Z), and writes it to the passed buffer.
+///
+/// The return value is the number of bytes written to the buffer.
+///
+/// # Safety
+/// - To encode all possible values of u128, the buffer must be at least 22 bytes long. However
+///   a smaller buffer may be used if the value to be encoded is known to be smaller.
+///   Base62 encoding adds 37.5% overhead to the size of the input.
+/// - The remaining end of the buffer is left untouched. It's up to the caller to zero it using
+///   the returned len if they want to.
+///
+/// # Example
+///
+/// ```rust
+/// extern crate base62;
+///
+/// let mut buf = [0; 22];
+/// base62::encode_bytes(1337_u32, &mut buf);
+/// assert_eq!(&buf[..2], b"LZ");
+/// ```
+pub fn encode_alternative_bytes<T: Into<u128>>(
+    num: T,
+    buf: &mut [u8],
+) -> Result<usize, EncodeError> {
+    let num = num.into();
+    let digits = digit_count(num);
+
+    if buf.len() < digits {
+        return Err(EncodeError::BufferTooSmall);
+    }
+
+    unsafe {
+        let len = _encode_alternative_buf(num, digits, &mut buf[..digits]);
+        debug_assert_eq!(len, digits);
+    }
+
+    Ok(digits)
+}
+
 /// Decodes a base62 byte slice or an equivalent, like a `String`,
 /// using the standard digit ordering (0 to 9, then A to Z, then a to z).
 ///
@@ -542,43 +619,6 @@ mod alloc_support {
         }
     }
 
-    /// Encodes an unsigned integer into base62, using the standard digit ordering
-    /// (0 to 9, then A to Z, then a to z), and writes it to the passed buffer.
-    ///
-    /// The return value is the number of bytes written to the buffer.
-    ///
-    /// # Safety
-    /// - To encode all possible values of u128, the buffer must be at least 22 bytes long. However
-    ///   a smaller buffer may be used if the value to be encoded is known to be smaller.
-    ///   Base62 encoding adds 37.5% overhead to the size of the input.
-    /// - The remaining end of the buffer is left untouched. It's up to the caller to zero it using
-    ///   the returned len if they want to.
-    ///
-    /// # Example
-    ///
-    /// ```rust
-    /// extern crate base62;
-    ///
-    /// let mut buf = [0; 22];
-    /// base62::encode_bytes(1337_u32, &mut buf);
-    /// assert_eq!(&buf[..2], b"LZ");
-    /// ```
-    pub fn encode_bytes<T: Into<u128>>(num: T, buf: &mut [u8]) -> Result<usize, EncodeError> {
-        let num = num.into();
-        let digits = digit_count(num);
-
-        if buf.len() < digits {
-            return Err(EncodeError::BufferTooSmall);
-        }
-
-        unsafe {
-            let len = _encode_buf(num, digits, &mut buf[..digits]);
-            debug_assert_eq!(len, digits);
-        }
-
-        Ok(digits)
-    }
-
     /// Encodes an unsigned integer into base62, using the alternative digit ordering
     /// (0 to 9, then a to z, then A to Z) with lowercase letters before uppercase letters,
     /// and returns the resulting [`String`].
@@ -627,46 +667,6 @@ mod alloc_support {
             let len = _encode_alternative_buf(num, digits, &mut buf.as_bytes_mut()[old_len..]);
             debug_assert_eq!(len, digits);
         }
-    }
-
-    /// Encodes an unsigned integer into base62, using the alternative digit ordering
-    /// (0 to 9, then a to z, then A to Z), and writes it to the passed buffer.
-    ///
-    /// The return value is the number of bytes written to the buffer.
-    ///
-    /// # Safety
-    /// - To encode all possible values of u128, the buffer must be at least 22 bytes long. However
-    ///   a smaller buffer may be used if the value to be encoded is known to be smaller.
-    ///   Base62 encoding adds 37.5% overhead to the size of the input.
-    /// - The remaining end of the buffer is left untouched. It's up to the caller to zero it using
-    ///   the returned len if they want to.
-    ///
-    /// # Example
-    ///
-    /// ```rust
-    /// extern crate base62;
-    ///
-    /// let mut buf = [0; 22];
-    /// base62::encode_bytes(1337_u32, &mut buf);
-    /// assert_eq!(&buf[..2], b"LZ");
-    /// ```
-    pub fn encode_alternative_bytes<T: Into<u128>>(
-        num: T,
-        buf: &mut [u8],
-    ) -> Result<usize, EncodeError> {
-        let num = num.into();
-        let digits = digit_count(num);
-
-        if buf.len() < digits {
-            return Err(EncodeError::BufferTooSmall);
-        }
-
-        unsafe {
-            let len = _encode_alternative_buf(num, digits, &mut buf[..digits]);
-            debug_assert_eq!(len, digits);
-        }
-
-        Ok(digits)
     }
 }
 
@@ -849,6 +849,194 @@ mod tests {
         );
     }
 
+    #[test]
+    fn test_encode_bytes() {
+        let mut buf = [0; 22];
+
+        // Test numeric type boundaries
+        assert!(encode_bytes(u128::MAX, &mut buf).is_ok());
+        assert!(&buf[..].starts_with(b"7n42DGM5Tflk9n8mt7Fhc7"));
+        buf.fill(0);
+
+        assert!(encode_bytes(u64::MAX as u128 + 1, &mut buf).is_ok());
+        assert!(&buf[..].starts_with(b"LygHa16AHYG"));
+        buf.fill(0);
+
+        assert!(encode_bytes(u64::MAX, &mut buf).is_ok());
+        assert!(&buf[..].starts_with(b"LygHa16AHYF"));
+        buf.fill(0);
+
+        assert!(encode_bytes(0_u8, &mut buf).is_ok());
+        assert!(&buf[..].starts_with(b"0"));
+        buf.fill(0);
+
+        #[cfg(feature = "alloc")]
+        {
+            use alloc::string::String;
+            // Test base62 length-change boundaries
+            let mut power = 1_u128;
+            let mut power_minus_one_str = String::with_capacity(21);
+            let mut power_str = String::with_capacity(22);
+            power_str.push('1');
+            for _ in 1..22 {
+                power *= BASE as u128;
+                power_minus_one_str.push('z');
+                power_str.push('0');
+
+                assert!(encode_bytes(power - 1, &mut buf).is_ok());
+                assert!(&buf[..].starts_with(power_minus_one_str.as_bytes()));
+                buf.fill(0);
+
+                assert!(encode_bytes(power, &mut buf).is_ok());
+                assert!(&buf[..].starts_with(power_str.as_bytes()));
+                buf.fill(0);
+            }
+        }
+
+        // Test cases that failed due to earlier bugs
+        assert!(encode_bytes(691337691337_u64, &mut buf).is_ok());
+        assert!(&buf[..].starts_with(b"CAcoUun"));
+        buf.fill(0);
+
+        assert!(encode_bytes(92202686130861137968548313400401640448_u128, &mut buf).is_ok());
+        assert!(&buf[..].starts_with(b"26tF05fvSIgh0000000000"));
+    }
+
+    #[test]
+    fn test_encode_alternative_bytes() {
+        let mut buf = [0; 22];
+
+        // Test numeric type boundaries
+        assert!(encode_alternative_bytes(u128::MAX, &mut buf).is_ok());
+        assert!(&buf[..].starts_with(b"7N42dgm5tFLK9N8MT7fHC7"));
+        buf.fill(0);
+
+        assert!(encode_alternative_bytes(u64::MAX as u128 + 1, &mut buf).is_ok());
+        assert!(&buf[..].starts_with(b"lYGhA16ahyg"));
+        buf.fill(0);
+
+        assert!(encode_alternative_bytes(u64::MAX, &mut buf).is_ok());
+        assert!(&buf[..].starts_with(b"lYGhA16ahyf"));
+        buf.fill(0);
+
+        assert!(encode_alternative_bytes(0_u8, &mut buf).is_ok());
+        assert!(&buf[..].starts_with(b"0"));
+        buf.fill(0);
+
+        #[cfg(feature = "alloc")]
+        {
+            use alloc::string::String;
+            // Test base62 length-change boundaries
+            let mut power = 1_u128;
+            let mut power_minus_one_str = String::with_capacity(21);
+            let mut power_str = String::with_capacity(22);
+            power_str.push('1');
+            for _ in 1..22 {
+                power *= BASE as u128;
+                power_minus_one_str.push('Z');
+                power_str.push('0');
+
+                assert!(encode_alternative_bytes(power - 1, &mut buf).is_ok());
+                assert!(&buf[..].starts_with(power_minus_one_str.as_bytes()));
+                buf.fill(0);
+
+                assert!(encode_alternative_bytes(power, &mut buf).is_ok());
+                assert!(&buf[..].starts_with(power_str.as_bytes()));
+                buf.fill(0);
+            }
+        }
+
+        // Test cases that failed due to earlier bugs
+        assert!(encode_alternative_bytes(691337691337_u64, &mut buf).is_ok());
+        assert!(&buf[..].starts_with(b"caCOuUN"));
+        buf.fill(0);
+
+        assert!(
+            encode_alternative_bytes(92202686130861137968548313400401640448_u128, &mut buf).is_ok()
+        );
+        assert!(&buf[..].starts_with(b"26Tf05FVsiGH0000000000"));
+    }
+
+    #[test]
+    fn test_decode() {
+        // Test leading zeroes handling
+        assert_eq!(
+            decode("00001000000000000000000000"),
+            Ok((BASE as u128).pow(21))
+        );
+
+        // Test numeric type boundaries
+        assert_eq!(decode("7n42DGM5Tflk9n8mt7Fhc7"), Ok(u128::MAX));
+        assert_eq!(decode("LygHa16AHYG"), Ok(u64::MAX as u128 + 1));
+        assert_eq!(decode("LygHa16AHYF"), Ok(u64::MAX as u128));
+        assert_eq!(decode("0"), Ok(0));
+
+        #[cfg(feature = "alloc")]
+        {
+            use alloc::string::String;
+            // Test base62 length-change boundaries
+            let mut power = 1_u128;
+            let mut power_minus_one_str = String::with_capacity(21);
+            let mut power_str = String::with_capacity(22);
+            power_str.push('1');
+            for _ in 1..22 {
+                power *= BASE as u128;
+                power_minus_one_str.push('z');
+                power_str.push('0');
+
+                assert_eq!(decode(&power_minus_one_str), Ok(power - 1));
+                assert_eq!(decode(&power_str), Ok(power));
+            }
+        }
+
+        // Test cases that failed due to earlier bugs
+        assert_eq!(decode("CAcoUun"), Ok(691337691337));
+        assert_eq!(
+            decode("26tF05fvSIgh0000000000"),
+            Ok(92202686130861137968548313400401640448)
+        );
+    }
+
+    #[test]
+    fn test_decode_alternative() {
+        // Test leading zeroes handling
+        assert_eq!(
+            decode_alternative("00001000000000000000000000"),
+            Ok((BASE as u128).pow(21))
+        );
+
+        // Test numeric type boundaries
+        assert_eq!(decode_alternative("7N42dgm5tFLK9N8MT7fHC7"), Ok(u128::MAX));
+        assert_eq!(decode_alternative("lYGhA16ahyg"), Ok(u64::MAX as u128 + 1));
+        assert_eq!(decode_alternative("lYGhA16ahyf"), Ok(u64::MAX as u128));
+        assert_eq!(decode_alternative("0"), Ok(0));
+
+        #[cfg(feature = "alloc")]
+        {
+            use alloc::string::String;
+            // Test base62 length-change boundaries
+            let mut power = 1_u128;
+            let mut power_minus_one_str = String::with_capacity(21);
+            let mut power_str = String::with_capacity(22);
+            power_str.push('1');
+            for _ in 1..22 {
+                power *= BASE as u128;
+                power_minus_one_str.push('Z');
+                power_str.push('0');
+
+                assert_eq!(decode_alternative(&power_minus_one_str), Ok(power - 1));
+                assert_eq!(decode_alternative(&power_str), Ok(power));
+            }
+        }
+
+        // Test cases that failed due to earlier bugs
+        assert_eq!(decode_alternative("caCOuUN"), Ok(691337691337));
+        assert_eq!(
+            decode_alternative("26Tf05FVsiGH0000000000"),
+            Ok(92202686130861137968548313400401640448)
+        );
+    }
+
     // Tests requiring alloc
     #[cfg(feature = "alloc")]
     mod alloc_tests {
@@ -908,180 +1096,6 @@ mod tests {
             buf.push_str("Base62: ");
             encode_alternative_buf(34051405518_u64, &mut buf);
             assert_eq!(buf, "Base62: Base62");
-        }
-
-        #[test]
-        fn test_encode_bytes() {
-            let mut buf = [0; 22];
-
-            // Test numeric type boundaries
-            assert!(encode_bytes(u128::MAX, &mut buf).is_ok());
-            assert!(&buf[..].starts_with(b"7n42DGM5Tflk9n8mt7Fhc7"));
-            buf.fill(0);
-
-            assert!(encode_bytes(u64::MAX as u128 + 1, &mut buf).is_ok());
-            assert!(&buf[..].starts_with(b"LygHa16AHYG"));
-            buf.fill(0);
-
-            assert!(encode_bytes(u64::MAX, &mut buf).is_ok());
-            assert!(&buf[..].starts_with(b"LygHa16AHYF"));
-            buf.fill(0);
-
-            assert!(encode_bytes(0_u8, &mut buf).is_ok());
-            assert!(&buf[..].starts_with(b"0"));
-            buf.fill(0);
-
-            // Test base62 length-change boundaries
-            let mut power = 1_u128;
-            let mut power_minus_one_str = String::with_capacity(21);
-            let mut power_str = String::with_capacity(22);
-            power_str.push('1');
-            for _ in 1..22 {
-                power *= BASE as u128;
-                power_minus_one_str.push('z');
-                power_str.push('0');
-
-                assert!(encode_bytes(power - 1, &mut buf).is_ok());
-                assert!(&buf[..].starts_with(power_minus_one_str.as_bytes()));
-                buf.fill(0);
-
-                assert!(encode_bytes(power, &mut buf).is_ok());
-                assert!(&buf[..].starts_with(power_str.as_bytes()));
-                buf.fill(0);
-            }
-
-            // Test cases that failed due to earlier bugs
-            assert!(encode_bytes(691337691337_u64, &mut buf).is_ok());
-            assert!(&buf[..].starts_with(b"CAcoUun"));
-            buf.fill(0);
-
-            assert!(encode_bytes(92202686130861137968548313400401640448_u128, &mut buf).is_ok());
-            assert!(&buf[..].starts_with(b"26tF05fvSIgh0000000000"));
-        }
-
-        #[test]
-        fn test_encode_alternative_bytes() {
-            let mut buf = [0; 22];
-
-            // Test numeric type boundaries
-            assert!(encode_alternative_bytes(u128::MAX, &mut buf).is_ok());
-            assert!(&buf[..].starts_with(b"7N42dgm5tFLK9N8MT7fHC7"));
-            buf.fill(0);
-
-            assert!(encode_alternative_bytes(u64::MAX as u128 + 1, &mut buf).is_ok());
-            assert!(&buf[..].starts_with(b"lYGhA16ahyg"));
-            buf.fill(0);
-
-            assert!(encode_alternative_bytes(u64::MAX, &mut buf).is_ok());
-            assert!(&buf[..].starts_with(b"lYGhA16ahyf"));
-            buf.fill(0);
-
-            assert!(encode_alternative_bytes(0_u8, &mut buf).is_ok());
-            assert!(&buf[..].starts_with(b"0"));
-            buf.fill(0);
-
-            // Test base62 length-change boundaries
-            let mut power = 1_u128;
-            let mut power_minus_one_str = String::with_capacity(21);
-            let mut power_str = String::with_capacity(22);
-            power_str.push('1');
-            for _ in 1..22 {
-                power *= BASE as u128;
-                power_minus_one_str.push('Z');
-                power_str.push('0');
-
-                assert!(encode_alternative_bytes(power - 1, &mut buf).is_ok());
-                assert!(&buf[..].starts_with(power_minus_one_str.as_bytes()));
-                buf.fill(0);
-
-                assert!(encode_alternative_bytes(power, &mut buf).is_ok());
-                assert!(&buf[..].starts_with(power_str.as_bytes()));
-                buf.fill(0);
-            }
-
-            // Test cases that failed due to earlier bugs
-            assert!(encode_alternative_bytes(691337691337_u64, &mut buf).is_ok());
-            assert!(&buf[..].starts_with(b"caCOuUN"));
-            buf.fill(0);
-
-            assert!(encode_alternative_bytes(
-                92202686130861137968548313400401640448_u128,
-                &mut buf
-            )
-            .is_ok());
-            assert!(&buf[..].starts_with(b"26Tf05FVsiGH0000000000"));
-        }
-
-        #[test]
-        fn test_decode() {
-            // Test leading zeroes handling
-            assert_eq!(
-                decode("00001000000000000000000000"),
-                Ok((BASE as u128).pow(21))
-            );
-
-            // Test numeric type boundaries
-            assert_eq!(decode("7n42DGM5Tflk9n8mt7Fhc7"), Ok(u128::MAX));
-            assert_eq!(decode("LygHa16AHYG"), Ok(u64::MAX as u128 + 1));
-            assert_eq!(decode("LygHa16AHYF"), Ok(u64::MAX as u128));
-            assert_eq!(decode("0"), Ok(0));
-
-            // Test base62 length-change boundaries
-            let mut power = 1_u128;
-            let mut power_minus_one_str = String::with_capacity(21);
-            let mut power_str = String::with_capacity(22);
-            power_str.push('1');
-            for _ in 1..22 {
-                power *= BASE as u128;
-                power_minus_one_str.push('z');
-                power_str.push('0');
-
-                assert_eq!(decode(&power_minus_one_str), Ok(power - 1));
-                assert_eq!(decode(&power_str), Ok(power));
-            }
-
-            // Test cases that failed due to earlier bugs
-            assert_eq!(decode("CAcoUun"), Ok(691337691337));
-            assert_eq!(
-                decode("26tF05fvSIgh0000000000"),
-                Ok(92202686130861137968548313400401640448)
-            );
-        }
-
-        #[test]
-        fn test_decode_alternative() {
-            // Test leading zeroes handling
-            assert_eq!(
-                decode_alternative("00001000000000000000000000"),
-                Ok((BASE as u128).pow(21))
-            );
-
-            // Test numeric type boundaries
-            assert_eq!(decode_alternative("7N42dgm5tFLK9N8MT7fHC7"), Ok(u128::MAX));
-            assert_eq!(decode_alternative("lYGhA16ahyg"), Ok(u64::MAX as u128 + 1));
-            assert_eq!(decode_alternative("lYGhA16ahyf"), Ok(u64::MAX as u128));
-            assert_eq!(decode_alternative("0"), Ok(0));
-
-            // Test base62 length-change boundaries
-            let mut power = 1_u128;
-            let mut power_minus_one_str = String::with_capacity(21);
-            let mut power_str = String::with_capacity(22);
-            power_str.push('1');
-            for _ in 1..22 {
-                power *= BASE as u128;
-                power_minus_one_str.push('Z');
-                power_str.push('0');
-
-                assert_eq!(decode_alternative(&power_minus_one_str), Ok(power - 1));
-                assert_eq!(decode_alternative(&power_str), Ok(power));
-            }
-
-            // Test cases that failed due to earlier bugs
-            assert_eq!(decode_alternative("caCOuUN"), Ok(691337691337));
-            assert_eq!(
-                decode_alternative("26Tf05FVsiGH0000000000"),
-                Ok(92202686130861137968548313400401640448)
-            );
         }
 
         #[test]
