@@ -345,11 +345,8 @@ fn decode_impl(mut input: &[u8], decode_table: &[u8; 256]) -> Result<u128, Decod
     }
 
     // Remove leading zeroes
-    let mut chopped_count = 0_usize;
-    while let Option::Some(b'0') = input.first() {
-        input = &input[1..];
-        chopped_count += 1;
-    }
+    let chopped_count = input.iter().take_while(|&&ch| ch == b'0').count();
+    input = &input[chopped_count..];
 
     let input_len = input.len();
     if input_len <= 22 {
