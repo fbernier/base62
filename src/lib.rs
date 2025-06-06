@@ -330,11 +330,17 @@ pub(crate) fn digit_count(n: u128) -> usize {
 #[inline(always)]
 fn decode_char(result: &mut u64, ch: u8, i: usize, table: &[u8; 256]) -> Result<(), DecodeError> {
     let char_value = table[ch as usize];
+    // avoid branch
+    let is_valid = (char_value != 255) as u64;
+    *result = result
+        .wrapping_mul(BASE)
+        .wrapping_add((char_value as u64) * is_valid);
+
     if char_value == 255 {
-        return Err(DecodeError::InvalidBase62Byte(ch, i));
+        Err(DecodeError::InvalidBase62Byte(ch, i))
+    } else {
+        Ok(())
     }
-    *result = result.wrapping_mul(BASE).wrapping_add(char_value as u64);
-    Ok(())
 }
 
 // Common decoding function
