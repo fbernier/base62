@@ -44,67 +44,98 @@ pub fn criterion_benchmark(c: &mut Criterion) {
     });
     group.finish();
 
-    // Original encoding benchmarks
-    let mut random_u128s = thread_rng().sample_iter::<u128, Standard>(Standard);
-
     let mut group = c.benchmark_group("encode");
 
     group.bench_function("standard_new_fixed", |b| {
         b.iter(|| encode(black_box(u128::MAX)))
     });
+
     group.bench_function("standard_new_random", |b| {
-        b.iter(|| encode(black_box(random_u128s.next().unwrap())))
+        b.iter_batched(
+            || thread_rng().sample(Standard),
+            |num: u128| encode(black_box(num)),
+            BatchSize::SmallInput,
+        )
     });
 
     group.bench_function("standard_bytes_fixed", |b| {
         let mut buf = [0; 22];
         b.iter(|| encode_bytes(black_box(u128::MAX), black_box(&mut buf)))
     });
+
     group.bench_function("standard_bytes_random", |b| {
-        let mut buf = [0; 22];
-        b.iter(|| encode_bytes(black_box(random_u128s.next().unwrap()), black_box(&mut buf)))
+        b.iter_batched(
+            || thread_rng().sample(Standard),
+            |num: u128| {
+                let mut buf = [0; 22];
+                encode_bytes(black_box(num), black_box(&mut buf))
+            },
+            BatchSize::SmallInput,
+        )
     });
 
     group.bench_function("standard_buf_fixed", |b| {
         b.iter(|| encode_buf(black_box(u128::MAX), black_box(&mut String::new())))
     });
+
     group.bench_function("standard_buf_random", |b| {
-        b.iter(|| {
-            encode_buf(
-                black_box(random_u128s.next().unwrap()),
-                black_box(&mut String::new()),
-            )
-        })
+        b.iter_batched_ref(
+            || {
+                let num: u128 = thread_rng().sample(Standard);
+                (num, String::with_capacity(22))
+            },
+            |(num, buf)| {
+                buf.clear();
+                encode_buf(black_box(*num), black_box(buf))
+            },
+            BatchSize::SmallInput,
+        )
     });
 
     group.bench_function("alternative_new_fixed", |b| {
         b.iter(|| encode_alternative(black_box(u128::MAX)))
     });
+
     group.bench_function("alternative_new_random", |b| {
-        b.iter(|| encode_alternative(black_box(random_u128s.next().unwrap())))
+        b.iter_batched(
+            || thread_rng().sample(Standard),
+            |num: u128| encode_alternative(black_box(num)),
+            BatchSize::SmallInput,
+        )
     });
 
     group.bench_function("alternative_bytes_fixed", |b| {
         let mut buf = [0; 22];
         b.iter(|| encode_alternative_bytes(black_box(u128::MAX), black_box(&mut buf)))
     });
+
     group.bench_function("alternative_bytes_random", |b| {
-        let mut buf = [0; 22];
-        b.iter(|| {
-            encode_alternative_bytes(black_box(random_u128s.next().unwrap()), black_box(&mut buf))
-        })
+        b.iter_batched(
+            || thread_rng().sample(Standard),
+            |num: u128| {
+                let mut buf = [0; 22];
+                encode_alternative_bytes(black_box(num), black_box(&mut buf))
+            },
+            BatchSize::SmallInput,
+        )
     });
 
     group.bench_function("alternative_buf_fixed", |b| {
         b.iter(|| encode_alternative_buf(black_box(u128::MAX), black_box(&mut String::new())))
     });
+
     group.bench_function("alternative_buf_random", |b| {
-        b.iter(|| {
-            encode_alternative_buf(
-                black_box(random_u128s.next().unwrap()),
-                black_box(&mut String::new()),
-            )
-        })
+        b.iter_batched_ref(
+            || {
+                let num: u128 = thread_rng().sample(Standard);
+                (num, String::with_capacity(22))
+            },
+            |(num, buf)| {
+                buf.clear();
+                encode_alternative_buf(black_box(*num), black_box(buf))
+            },
+            BatchSize::SmallInput,
+        )
     });
 
     group.finish();
