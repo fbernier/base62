@@ -537,7 +537,11 @@ unsafe fn encode_impl(
 
     while digit_index < digits {
         write_idx = write_idx.wrapping_sub(1);
-        *buf.get_unchecked_mut(write_idx) = *encode_table.get_unchecked((u64_num % BASE) as usize);
+
+        let quotient = u64_num / BASE;
+        let remainder = u64_num - quotient * BASE;
+
+        *buf.get_unchecked_mut(write_idx) = *encode_table.get_unchecked(remainder as usize);
 
         digit_index = digit_index.wrapping_add(1);
         match digit_index {
@@ -546,7 +550,7 @@ unsafe fn encode_impl(
                 num /= BASE_TO_10;
             }
             20 => u64_num = num as u64,
-            _ => u64_num /= BASE,
+            _ => u64_num = quotient,
         }
     }
 
