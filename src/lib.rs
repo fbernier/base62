@@ -824,6 +824,16 @@ mod tests {
                 }
             }
         }
+
+        quickcheck! {
+            fn div_base_to_10_matches_std(num: u128) -> bool {
+                let (quotient_fast, remainder_fast) = div_base_to_10(num);
+                let quotient = num / BASE_TO_10;
+                let remainder = (num % BASE_TO_10) as u64;
+
+                quotient == quotient_fast && remainder == remainder_fast
+            }
+        }
     }
 
     // Pure computation tests that don't need allocation
