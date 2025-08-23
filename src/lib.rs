@@ -22,7 +22,7 @@ extern crate alloc;
 #[cfg(feature = "std")]
 extern crate std;
 
-use core::fmt;
+use core::{convert::TryInto, fmt};
 
 const BASE: u64 = 62;
 const BASE_TO_2: u64 = BASE * BASE;
@@ -536,6 +536,10 @@ pub fn decode_alternative<T: AsRef<[u8]>>(input: T) -> Result<u128, DecodeError>
 
 // Common encoding function
 unsafe fn encode_impl(num: u128, digits: usize, buf: &mut [u8], encode_table: &[u8; 62]) -> usize {
+    if let Ok(num) = num.try_into() {
+        return encode_impl_u64(num, digits, buf, encode_table);
+    }
+
     let mut write_idx = digits;
     let mut digit_index = 0_usize;
 
@@ -557,6 +561,29 @@ unsafe fn encode_impl(num: u128, digits: usize, buf: &mut [u8], encode_table: &[
             20 => u64_num = num as u64,
             _ => u64_num = quotient,
         }
+    }
+
+    digits
+}
+
+unsafe fn encode_impl_u64(
+    mut u64_num: u64,
+    digits: usize,
+    buf: &mut [u8],
+    encode_table: &[u8; 62],
+) -> usize {
+    let mut write_idx = digits;
+    let mut digit_index = 0_usize;
+
+    while digit_index < digits {
+        write_idx = write_idx.wrapping_sub(1);
+
+        let remainder = u64_num % BASE;
+        u64_num /= BASE;
+
+        *buf.get_unchecked_mut(write_idx) = *encode_table.get_unchecked(remainder as usize);
+
+        digit_index = digit_index.wrapping_add(1);
     }
 
     digits
