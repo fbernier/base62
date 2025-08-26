@@ -26,11 +26,14 @@ std = ["alloc"]
 rustversion = "1"
 
 [dev-dependencies]
-criterion = { version = "0.5", default-features = false }
+criterion = { version = "0.7", default-features = false }
 quickcheck = "1"
-rand = "0.8"
+rand = "0.9"
 
 [[bench]]
 name = "base62"
 harness = false
 required-features = ["alloc"]
+
+[lib]
+bench = false

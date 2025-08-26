@@ -2,9 +2,12 @@ use base62::{
     decode, decode_alternative, encode, encode_alternative, encode_alternative_buf,
     encode_alternative_bytes, encode_buf, encode_bytes,
 };
-use criterion::{black_box, criterion_group, criterion_main, BatchSize, Criterion};
-use rand::distributions::Standard;
-use rand::{thread_rng, Rng};
+
+use std::hint::black_box;
+
+use criterion::{criterion_group, criterion_main, BatchSize, Criterion};
+use rand::distr::StandardUniform;
+use rand::{rng, Rng};
 
 pub fn criterion_benchmark(c: &mut Criterion) {
     let mut group = c.benchmark_group("decode");
@@ -19,7 +22,7 @@ pub fn criterion_benchmark(c: &mut Criterion) {
         b.iter_batched(
             || {
                 // Setup (runs outside measured time)
-                let random_num: u128 = thread_rng().sample(Standard);
+                let random_num: u128 = rng().sample(StandardUniform);
                 encode(random_num)
             },
             decode, // Measured function
@@ -35,7 +38,7 @@ pub fn criterion_benchmark(c: &mut Criterion) {
         b.iter_batched(
             || {
                 // Setup (runs outside measured time)
-                let random_num: u128 = thread_rng().sample(Standard);
+                let random_num: u128 = rng().sample(StandardUniform);
                 encode_alternative(random_num)
             },
             decode_alternative,
@@ -52,7 +55,7 @@ pub fn criterion_benchmark(c: &mut Criterion) {
 
     group.bench_function("standard_new_random", |b| {
         b.iter_batched(
-            || thread_rng().sample(Standard),
+            || rng().sample(StandardUniform),
             |num: u128| encode(black_box(num)),
             BatchSize::SmallInput,
         )
@@ -60,7 +63,7 @@ pub fn criterion_benchmark(c: &mut Criterion) {
 
     group.bench_function("standard_new_random_u64", |b| {
         b.iter_batched(
-            || thread_rng().sample(Standard),
+            || rng().sample(StandardUniform),
             |num: u64| encode(black_box(num)),
             BatchSize::SmallInput,
         )
@@ -73,7 +76,7 @@ pub fn criterion_benchmark(c: &mut Criterion) {
 
     group.bench_function("standard_bytes_random", |b| {
         b.iter_batched(
-            || thread_rng().sample(Standard),
+            || rng().sample(StandardUniform),
             |num: u128| {
                 let mut buf = [0; 22];
                 encode_bytes(black_box(num), black_box(&mut buf))
@@ -84,7 +87,7 @@ pub fn criterion_benchmark(c: &mut Criterion) {
 
     group.bench_function("standard_bytes_random_u64", |b| {
         b.iter_batched(
-            || thread_rng().sample(Standard),
+            || rng().sample(StandardUniform),
             |num: u64| {
                 let mut buf = [0; 22];
                 encode_bytes(black_box(num), black_box(&mut buf))
@@ -100,7 +103,7 @@ pub fn criterion_benchmark(c: &mut Criterion) {
     group.bench_function("standard_buf_random", |b| {
         b.iter_batched_ref(
             || {
-                let num: u128 = thread_rng().sample(Standard);
+                let num: u128 = rng().sample(StandardUniform);
                 (num, String::with_capacity(22))
             },
             |(num, buf)| {
@@ -114,7 +117,7 @@ pub fn criterion_benchmark(c: &mut Criterion) {
     group.bench_function("standard_buf_random_u64", |b| {
         b.iter_batched_ref(
             || {
-                let num: u64 = thread_rng().sample(Standard);
+                let num: u64 = rng().sample(StandardUniform);
                 (num, String::with_capacity(11))
             },
             |(num, buf)| {
@@ -131,7 +134,7 @@ pub fn criterion_benchmark(c: &mut Criterion) {
 
     group.bench_function("alternative_new_random", |b| {
         b.iter_batched(
-            || thread_rng().sample(Standard),
+            || rng().sample(StandardUniform),
             |num: u128| encode_alternative(black_box(num)),
             BatchSize::SmallInput,
         )
@@ -139,7 +142,7 @@ pub fn criterion_benchmark(c: &mut Criterion) {
 
     group.bench_function("alternative_new_random_u64", |b| {
         b.iter_batched(
-            || thread_rng().sample(Standard),
+            || rng().sample(StandardUniform),
             |num: u64| encode_alternative(black_box(num)),
             BatchSize::SmallInput,
         )
@@ -152,7 +155,7 @@ pub fn criterion_benchmark(c: &mut Criterion) {
 
     group.bench_function("alternative_bytes_random", |b| {
         b.iter_batched(
-            || thread_rng().sample(Standard),
+            || rng().sample(StandardUniform),
             |num: u128| {
                 let mut buf = [0; 22];
                 encode_alternative_bytes(black_box(num), black_box(&mut buf))
@@ -163,7 +166,7 @@ pub fn criterion_benchmark(c: &mut Criterion) {
 
     group.bench_function("alternative_bytes_random_u64", |b| {
         b.iter_batched(
-            || thread_rng().sample(Standard),
+            || rng().sample(StandardUniform),
             |num: u64| {
                 let mut buf = [0; 11];
                 encode_alternative_bytes(black_box(num), black_box(&mut buf))
@@ -179,7 +182,7 @@ pub fn criterion_benchmark(c: &mut Criterion) {
     group.bench_function("alternative_buf_random", |b| {
         b.iter_batched_ref(
             || {
-                let num: u128 = thread_rng().sample(Standard);
+                let num: u128 = rng().sample(StandardUniform);
                 (num, String::with_capacity(22))
             },
             |(num, buf)| {
@@ -193,7 +196,7 @@ pub fn criterion_benchmark(c: &mut Criterion) {
     group.bench_function("alternative_buf_random_u64", |b| {
         b.iter_batched_ref(
             || {
-                let num: u64 = thread_rng().sample(Standard);
+                let num: u64 = rng().sample(StandardUniform);
                 (num, String::with_capacity(11))
             },
             |(num, buf)| {
