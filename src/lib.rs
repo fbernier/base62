@@ -46,6 +46,11 @@ const BASE_TO_19: u128 = BASE_TO_18 * BASE as u128;
 const BASE_TO_20: u128 = BASE_TO_19 * BASE as u128;
 const BASE_TO_21: u128 = BASE_TO_20 * BASE as u128;
 
+// Rust does not apply strength reduction to integer division by u128s, instead it uses the very slow __udivti3 intrinsic.
+// This multiply and shift is equivalent to dividing by BASE_TO_10.
+const DIV_BASE_TO_10_MULTIPLY: u128 = 233718071534448225491982379416108680074;
+const DIV_BASE_TO_10_SHIFT: u8 = 59;
+
 struct Base62Tables {
     standard: [u8; 62],
     alternative: [u8; 62],
@@ -530,16 +535,11 @@ pub fn decode_alternative<T: AsRef<[u8]>>(input: T) -> Result<u128, DecodeError>
 }
 
 // Common encoding function
-unsafe fn encode_impl(
-    mut num: u128,
-    digits: usize,
-    buf: &mut [u8],
-    encode_table: &[u8; 62],
-) -> usize {
+unsafe fn encode_impl(num: u128, digits: usize, buf: &mut [u8], encode_table: &[u8; 62]) -> usize {
     let mut write_idx = digits;
     let mut digit_index = 0_usize;
-    let mut u64_num = (num % BASE_TO_10) as u64;
-    num /= BASE_TO_10;
+
+    let (mut num, mut u64_num) = div_base_to_10(num);
 
     while digit_index < digits {
         write_idx = write_idx.wrapping_sub(1);
@@ -552,8 +552,7 @@ unsafe fn encode_impl(
         digit_index = digit_index.wrapping_add(1);
         match digit_index {
             10 => {
-                u64_num = (num % BASE_TO_10) as u64;
-                num /= BASE_TO_10;
+                (num, u64_num) = div_base_to_10(num);
             }
             20 => u64_num = num as u64,
             _ => u64_num = quotient,
@@ -561,6 +560,33 @@ unsafe fn encode_impl(
     }
 
     digits
+}
+
+fn div_base_to_10(num: u128) -> (u128, u64) {
+    let quotient = mulh(DIV_BASE_TO_10_MULTIPLY, num) >> DIV_BASE_TO_10_SHIFT;
+    let remainder = num - BASE_TO_10 * quotient;
+    (quotient, remainder as u64)
+}
+
+// Multiply two u128 together, returning only the top half of the product.
+const fn mulh(x: u128, y: u128) -> u128 {
+    const LOWER_HALF_MASK: u128 = (1 << 64) - 1;
+
+    let x_low = x & LOWER_HALF_MASK;
+    let y_low = y & LOWER_HALF_MASK;
+    let t = x_low.wrapping_mul(y_low);
+    let k = t >> 64;
+
+    let x_high = x >> 64;
+    let t = x_high.wrapping_mul(y_low) + k;
+    let k = t & LOWER_HALF_MASK;
+    let w1 = t >> 64;
+
+    let y_high = y >> 64;
+    let t = x_low.wrapping_mul(y_high) + k;
+    let k = t >> 64;
+
+    x_high.wrapping_mul(y_high) + w1 + k
 }
 
 unsafe fn _encode_buf(num: u128, digits: usize, buf: &mut [u8]) -> usize {
@@ -796,6 +822,16 @@ mod tests {
                 } else {
                     false
                 }
+            }
+        }
+
+        quickcheck! {
+            fn div_base_to_10_matches_std(num: u128) -> bool {
+                let (quotient_fast, remainder_fast) = div_base_to_10(num);
+                let quotient = num / BASE_TO_10;
+                let remainder = (num % BASE_TO_10) as u64;
+
+                quotient == quotient_fast && remainder == remainder_fast
             }
         }
     }
