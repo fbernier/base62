@@ -58,6 +58,14 @@ pub fn criterion_benchmark(c: &mut Criterion) {
         )
     });
 
+    group.bench_function("standard_new_random_u64", |b| {
+        b.iter_batched(
+            || thread_rng().sample(Standard),
+            |num: u64| encode(black_box(num)),
+            BatchSize::SmallInput,
+        )
+    });
+
     group.bench_function("standard_bytes_fixed", |b| {
         let mut buf = [0; 22];
         b.iter(|| encode_bytes(black_box(u128::MAX), black_box(&mut buf)))
@@ -67,6 +75,17 @@ pub fn criterion_benchmark(c: &mut Criterion) {
         b.iter_batched(
             || thread_rng().sample(Standard),
             |num: u128| {
+                let mut buf = [0; 22];
+                encode_bytes(black_box(num), black_box(&mut buf))
+            },
+            BatchSize::SmallInput,
+        )
+    });
+
+    group.bench_function("standard_bytes_random_u64", |b| {
+        b.iter_batched(
+            || thread_rng().sample(Standard),
+            |num: u64| {
                 let mut buf = [0; 22];
                 encode_bytes(black_box(num), black_box(&mut buf))
             },
@@ -92,6 +111,20 @@ pub fn criterion_benchmark(c: &mut Criterion) {
         )
     });
 
+    group.bench_function("standard_buf_random_u64", |b| {
+        b.iter_batched_ref(
+            || {
+                let num: u64 = thread_rng().sample(Standard);
+                (num, String::with_capacity(11))
+            },
+            |(num, buf)| {
+                buf.clear();
+                encode_buf(black_box(*num), black_box(buf))
+            },
+            BatchSize::SmallInput,
+        )
+    });
+
     group.bench_function("alternative_new_fixed", |b| {
         b.iter(|| encode_alternative(black_box(u128::MAX)))
     });
@@ -100,6 +133,14 @@ pub fn criterion_benchmark(c: &mut Criterion) {
         b.iter_batched(
             || thread_rng().sample(Standard),
             |num: u128| encode_alternative(black_box(num)),
+            BatchSize::SmallInput,
+        )
+    });
+
+    group.bench_function("alternative_new_random_u64", |b| {
+        b.iter_batched(
+            || thread_rng().sample(Standard),
+            |num: u64| encode_alternative(black_box(num)),
             BatchSize::SmallInput,
         )
     });
@@ -120,6 +161,17 @@ pub fn criterion_benchmark(c: &mut Criterion) {
         )
     });
 
+    group.bench_function("alternative_bytes_random_u64", |b| {
+        b.iter_batched(
+            || thread_rng().sample(Standard),
+            |num: u64| {
+                let mut buf = [0; 11];
+                encode_alternative_bytes(black_box(num), black_box(&mut buf))
+            },
+            BatchSize::SmallInput,
+        )
+    });
+
     group.bench_function("alternative_buf_fixed", |b| {
         b.iter(|| encode_alternative_buf(black_box(u128::MAX), black_box(&mut String::new())))
     });
@@ -129,6 +181,20 @@ pub fn criterion_benchmark(c: &mut Criterion) {
             || {
                 let num: u128 = thread_rng().sample(Standard);
                 (num, String::with_capacity(22))
+            },
+            |(num, buf)| {
+                buf.clear();
+                encode_alternative_buf(black_box(*num), black_box(buf))
+            },
+            BatchSize::SmallInput,
+        )
+    });
+
+    group.bench_function("alternative_buf_random_u64", |b| {
+        b.iter_batched_ref(
+            || {
+                let num: u64 = thread_rng().sample(Standard);
+                (num, String::with_capacity(11))
             },
             |(num, buf)| {
                 buf.clear();

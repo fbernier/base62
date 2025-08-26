@@ -22,7 +22,7 @@ extern crate alloc;
 #[cfg(feature = "std")]
 extern crate std;
 
-use core::fmt;
+use core::{convert::TryInto, fmt};
 
 const BASE: u64 = 62;
 const BASE_TO_2: u64 = BASE * BASE;
@@ -536,30 +536,194 @@ pub fn decode_alternative<T: AsRef<[u8]>>(input: T) -> Result<u128, DecodeError>
 
 // Common encoding function
 unsafe fn encode_impl(num: u128, digits: usize, buf: &mut [u8], encode_table: &[u8; 62]) -> usize {
+    if let Ok(num) = TryInto::<u64>::try_into(num) {
+        encode_impl_u64(num, digits, buf, encode_table)
+    } else if digits > 20 {
+        encode_impl_over_20_digits(num, digits, buf, encode_table)
+    } else if digits == 20 {
+        //  (AAAAAAAAAA, BBBBBBBBBB)
+        let (first_u64, second_u64) = div_base_to_10(num);
+        // AAAAAAAAAA
+        let first_u64 = first_u64 as u64;
+
+        encode_impl_20_digits(first_u64, second_u64, buf, encode_table)
+    } else {
+        // digits between 11 and 20 (10 digits would always fit into a u64, which we checked first)
+        encode_impl_over_10_under_20_digits(num, digits, buf, encode_table)
+    }
+}
+
+// >20 digits requires two u128 divisions
+unsafe fn encode_impl_over_20_digits(
+    num: u128,
+    digits: usize,
+    buf: &mut [u8],
+    encode_table: &[u8; 62],
+) -> usize {
+    // input: AABBBBBBBBBBCCCCCCCCCC
+    //
+    //  (AABBBBBBBBBB, CCCCCCCCCC)
+    let (num, third_u64) = div_base_to_10(num);
+    //  (AA, BBBBBBBBBB)
+    let (first_u64, second_u64) = div_base_to_10(num);
+    //   AA - no more than two digits as num was 22 digits
+    let first_u64 = first_u64 as u64;
+
+    // encode the first one or two digits
+    if digits == 21 {
+        *buf.get_unchecked_mut(0) = *encode_table.get_unchecked(first_u64 as usize);
+    } else {
+        let second_digit = first_u64 % BASE;
+        let first_digit = first_u64 / BASE;
+        *buf.get_unchecked_mut(1) = *encode_table.get_unchecked(second_digit as usize);
+        *buf.get_unchecked_mut(0) = *encode_table.get_unchecked(first_digit as usize);
+    }
+
+    // encode the last 20 digits
+    encode_impl_20_digits(
+        second_u64,
+        third_u64,
+        &mut buf[(digits - 20)..],
+        encode_table,
+    );
+
+    digits
+}
+
+// 20 digit needs only u64 or u32 divisions and can be vectorised (four u32 divisions at once)
+unsafe fn encode_impl_20_digits(
+    first_u64: u64,
+    second_u64: u64,
+    buf: &mut [u8],
+    encode_table: &[u8; 62],
+) -> usize {
+    let first_u32 = (first_u64 / BASE_TO_5) as u32;
+    let second_u32 = (first_u64 % BASE_TO_5) as u32;
+    let third_u32 = (second_u64 / BASE_TO_5) as u32;
+    let fourth_u32 = (second_u64 % BASE_TO_5) as u32;
+
+    // [AAAAA, BBBBB, CCCCC, DDDDD]
+    let mut nums = [first_u32, second_u32, third_u32, fourth_u32];
+    const STARTING_WRITE_IDXS: [usize; 4] = [5, 10, 15, 20];
+
+    for i in 0..5 {
+        nums.iter_mut()
+            .zip(STARTING_WRITE_IDXS)
+            .for_each(|(num, starting_write_idx)| {
+                let quotient = num.wrapping_div(BASE as u32);
+                let remainder = (*num - (BASE as u32) * quotient) as usize;
+                *num = quotient;
+
+                *buf.get_unchecked_mut(starting_write_idx - i - 1) =
+                    *encode_table.get_unchecked(remainder)
+            });
+    }
+
+    20
+}
+
+// 10-20 digit implementation needs only one u128 division, then a u64 division per digit
+unsafe fn encode_impl_over_10_under_20_digits(
+    num: u128,
+    digits: usize,
+    buf: &mut [u8],
+    encode_table: &[u8; 62],
+) -> usize {
     let mut write_idx = digits;
     let mut digit_index = 0_usize;
 
-    let (mut num, mut u64_num) = div_base_to_10(num);
+    let (first_u64, mut num) = div_base_to_10(num);
+    // as this number is <20 digits, once we remove the rightmost 10 digits, the remainder is a u64.
+    let first_u64 = first_u64 as u64;
 
     while digit_index < digits {
         write_idx = write_idx.wrapping_sub(1);
 
-        let quotient = u64_num / BASE;
-        let remainder = u64_num - quotient * BASE;
+        let remainder = num % BASE;
+        num /= BASE;
 
         *buf.get_unchecked_mut(write_idx) = *encode_table.get_unchecked(remainder as usize);
 
         digit_index = digit_index.wrapping_add(1);
-        match digit_index {
-            10 => {
-                (num, u64_num) = div_base_to_10(num);
-            }
-            20 => u64_num = num as u64,
-            _ => u64_num = quotient,
+        if digit_index == 10 {
+            num = first_u64
         }
     }
 
     digits
+}
+
+// u64 implementation can avoid any u128 operations
+unsafe fn encode_impl_u64(
+    num: u64,
+    digits: usize,
+    buf: &mut [u8],
+    encode_table: &[u8; 62],
+) -> usize {
+    if digits == 11 {
+        // ABBBBBBBBBB
+
+        // A
+        let first_u64 = num / (BASE_TO_10 as u64);
+        // BBBBBBBBBB
+        let second_u64 = num % (BASE_TO_10 as u64);
+
+        *buf.get_unchecked_mut(0) = *encode_table.get_unchecked(first_u64 as usize);
+
+        encode_impl_u64_10_digits(second_u64, &mut buf[1..], encode_table);
+        digits
+    } else if digits == 10 {
+        encode_impl_u64_10_digits(num, buf, encode_table)
+    } else {
+        encode_impl_u64_under_10_digits(num, digits, buf, encode_table)
+    }
+}
+
+unsafe fn encode_impl_u64_under_10_digits(
+    mut num: u64,
+    digits: usize,
+    buf: &mut [u8],
+    encode_table: &[u8; 62],
+) -> usize {
+    let mut write_idx = digits;
+    let mut digit_index = 0_usize;
+
+    while digit_index < digits {
+        write_idx = write_idx.wrapping_sub(1);
+
+        let remainder = num % BASE;
+        num /= BASE;
+
+        *buf.get_unchecked_mut(write_idx) = *encode_table.get_unchecked(remainder as usize);
+
+        digit_index = digit_index.wrapping_add(1);
+    }
+
+    digits
+}
+
+unsafe fn encode_impl_u64_10_digits(num: u64, buf: &mut [u8], encode_table: &[u8; 62]) -> usize {
+    let first_u32 = (num / BASE_TO_5) as u32;
+    let second_u32 = (num % BASE_TO_5) as u32;
+
+    // [AAAAA, BBBBB]
+    let mut nums = [first_u32, second_u32];
+    const STARTING_WRITE_IDXS: [usize; 2] = [5, 10];
+
+    for i in 0..5 {
+        nums.iter_mut()
+            .zip(STARTING_WRITE_IDXS)
+            .for_each(|(num, starting_write_idx)| {
+                let quotient = num.wrapping_div(BASE as u32);
+                let remainder = (*num - (BASE as u32) * quotient) as usize;
+                *num = quotient;
+
+                *buf.get_unchecked_mut(starting_write_idx - i - 1) =
+                    *encode_table.get_unchecked(remainder)
+            });
+    }
+
+    10
 }
 
 fn div_base_to_10(num: u128) -> (u128, u64) {
