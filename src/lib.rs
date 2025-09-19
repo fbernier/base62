@@ -51,17 +51,22 @@ const BASE_TO_21: u128 = BASE_TO_20 * BASE as u128;
 const DIV_BASE_TO_10_MULTIPLY: u128 = 233718071534448225491982379416108680074;
 const DIV_BASE_TO_10_SHIFT: u8 = 59;
 
-struct Base62Tables {
-    standard: [u8; 62],
-    alternative: [u8; 62],
-    decode_standard: [u8; 256],
-    decode_alternative: [u8; 256],
+#[repr(align(64))]
+struct StandardTables {
+    encode: [u8; 62],
+    decode: [u8; 128],
 }
 
-impl Base62Tables {
+#[repr(align(64))]
+struct AlternativeTables {
+    encode: [u8; 62],
+    decode: [u8; 128],
+}
+
+impl StandardTables {
     const fn new() -> Self {
         // Standard encoding table (0-9A-Za-z)
-        const STANDARD: [u8; 62] = [
+        const ENCODE: [u8; 62] = [
             b'0', b'1', b'2', b'3', b'4', b'5', b'6', b'7', b'8', b'9', b'A', b'B', b'C', b'D',
             b'E', b'F', b'G', b'H', b'I', b'J', b'K', b'L', b'M', b'N', b'O', b'P', b'Q', b'R',
             b'S', b'T', b'U', b'V', b'W', b'X', b'Y', b'Z', b'a', b'b', b'c', b'd', b'e', b'f',
@@ -69,8 +74,36 @@ impl Base62Tables {
             b'u', b'v', b'w', b'x', b'y', b'z',
         ];
 
+        let mut decode = [255u8; 128];
+
+        // Populate decode table
+        let mut i = 0u8;
+        while i < 10 {
+            decode[(b'0' + i) as usize] = i;
+            i += 1;
+        }
+        let mut i = 0u8;
+        while i < 26 {
+            decode[(b'A' + i) as usize] = i + 10;
+            i += 1;
+        }
+        let mut i = 0u8;
+        while i < 26 {
+            decode[(b'a' + i) as usize] = i + 36;
+            i += 1;
+        }
+
+        Self {
+            encode: ENCODE,
+            decode,
+        }
+    }
+}
+
+impl AlternativeTables {
+    const fn new() -> Self {
         // Alternative encoding table (0-9a-zA-Z)
-        const ALTERNATIVE: [u8; 62] = [
+        const ENCODE: [u8; 62] = [
             b'0', b'1', b'2', b'3', b'4', b'5', b'6', b'7', b'8', b'9', b'a', b'b', b'c', b'd',
             b'e', b'f', b'g', b'h', b'i', b'j', b'k', b'l', b'm', b'n', b'o', b'p', b'q', b'r',
             b's', b't', b'u', b'v', b'w', b'x', b'y', b'z', b'A', b'B', b'C', b'D', b'E', b'F',
@@ -78,53 +111,34 @@ impl Base62Tables {
             b'U', b'V', b'W', b'X', b'Y', b'Z',
         ];
 
-        let mut decode_standard = [255u8; 256];
-        let mut decode_alternative = [255u8; 256];
+        let mut decode = [255u8; 128];
 
-        // Populate standard decoding table
+        // Populate decode table
         let mut i = 0u8;
         while i < 10 {
-            decode_standard[(b'0' + i) as usize] = i;
+            decode[(b'0' + i) as usize] = i;
             i += 1;
         }
         let mut i = 0u8;
         while i < 26 {
-            decode_standard[(b'A' + i) as usize] = i + 10;
+            decode[(b'a' + i) as usize] = i + 10;
             i += 1;
         }
         let mut i = 0u8;
         while i < 26 {
-            decode_standard[(b'a' + i) as usize] = i + 36;
-            i += 1;
-        }
-
-        // Populate alternative decoding table
-        let mut i = 0u8;
-        while i < 10 {
-            decode_alternative[(b'0' + i) as usize] = i;
-            i += 1;
-        }
-        let mut i = 0u8;
-        while i < 26 {
-            decode_alternative[(b'a' + i) as usize] = i + 10;
-            i += 1;
-        }
-        let mut i = 0u8;
-        while i < 26 {
-            decode_alternative[(b'A' + i) as usize] = i + 36;
+            decode[(b'A' + i) as usize] = i + 36;
             i += 1;
         }
 
         Self {
-            standard: STANDARD,
-            alternative: ALTERNATIVE,
-            decode_standard,
-            decode_alternative,
+            encode: ENCODE,
+            decode,
         }
     }
 }
 
-static TABLES: Base62Tables = Base62Tables::new();
+static STANDARD_TABLES: StandardTables = StandardTables::new();
+static ALTERNATIVE_TABLES: AlternativeTables = AlternativeTables::new();
 
 /// Indicates the cause of a decoding failure in base62 decoding operations.
 #[derive(Copy, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
@@ -333,24 +347,35 @@ pub(crate) fn digit_count(n: u128) -> usize {
 }
 
 #[inline(always)]
-fn decode_char(result: &mut u64, ch: u8, i: usize, table: &[u8; 256]) -> Result<(), DecodeError> {
-    let char_value = table[ch as usize];
-    // avoid branch
-    let is_valid = (char_value != 255) as u64;
-    *result = result
-        .wrapping_mul(BASE)
-        .wrapping_add((char_value as u64) * is_valid);
+fn decode_char(
+    result: &mut u64,
+    ch: u8,
+    i: usize,
+    decode_table: &[u8; 128],
+) -> Result<(), DecodeError> {
+    if ch < 128 {
+        let char_value = decode_table[ch as usize];
 
-    if char_value == 255 {
-        Err(DecodeError::InvalidBase62Byte(ch, i))
+        // avoid branching
+        let is_valid = (char_value != 255) as u64;
+        *result = result
+            .wrapping_mul(BASE)
+            .wrapping_add((char_value as u64) * is_valid);
+
+        if char_value == 255 {
+            Err(DecodeError::InvalidBase62Byte(ch, i))
+        } else {
+            Ok(())
+        }
     } else {
-        Ok(())
+        // non-ASCII character - always invalid
+        Err(DecodeError::InvalidBase62Byte(ch, i))
     }
 }
 
 // Common decoding function
 #[inline]
-fn decode_impl(mut input: &[u8], decode_table: &[u8; 256]) -> Result<u128, DecodeError> {
+fn decode_impl(mut input: &[u8], decode_table: &[u8; 128]) -> Result<u128, DecodeError> {
     if input.is_empty() {
         return Err(DecodeError::EmptyInput);
     }
@@ -391,6 +416,7 @@ fn decode_impl(mut input: &[u8], decode_table: &[u8; 256]) -> Result<u128, Decod
 
         let mut iter = (chopped_count..).zip(input.iter().copied());
 
+        // process first 10 characters
         let mut result_a = 0_u64;
         for (i, ch) in iter.by_ref().take(10) {
             decode_char(&mut result_a, ch, i, decode_table)?;
@@ -399,12 +425,14 @@ fn decode_impl(mut input: &[u8], decode_table: &[u8; 256]) -> Result<u128, Decod
             .checked_mul(a_power)
             .ok_or(DecodeError::ArithmeticOverflow)?;
 
+        // process next 10 characters
         let mut result_b = 0_u64;
         for (i, ch) in iter.by_ref().take(10) {
             decode_char(&mut result_b, ch, i, decode_table)?;
         }
         let result_b = (result_b as u128).wrapping_mul(b_power as u128);
 
+        // process remaining characters
         let mut result_c = 0_u64;
         for (i, ch) in iter {
             decode_char(&mut result_c, ch, i, decode_table)?;
@@ -512,7 +540,7 @@ pub fn encode_alternative_bytes<T: Into<u128>>(
 /// assert_eq!(value, 189876682536016);
 /// ```
 pub fn decode<T: AsRef<[u8]>>(input: T) -> Result<u128, DecodeError> {
-    decode_impl(input.as_ref(), &TABLES.decode_standard)
+    decode_impl(input.as_ref(), &STANDARD_TABLES.decode)
 }
 
 /// Decodes a base62 byte slice or an equivalent, like a `String`,
@@ -531,7 +559,7 @@ pub fn decode<T: AsRef<[u8]>>(input: T) -> Result<u128, DecodeError> {
 /// assert_eq!(value, 96813686712946);
 /// ```
 pub fn decode_alternative<T: AsRef<[u8]>>(input: T) -> Result<u128, DecodeError> {
-    decode_impl(input.as_ref(), &TABLES.decode_alternative)
+    decode_impl(input.as_ref(), &ALTERNATIVE_TABLES.decode)
 }
 
 // Common encoding function
@@ -754,11 +782,11 @@ const fn mulh(x: u128, y: u128) -> u128 {
 }
 
 unsafe fn _encode_buf(num: u128, digits: usize, buf: &mut [u8]) -> usize {
-    encode_impl(num, digits, buf, &TABLES.standard)
+    encode_impl(num, digits, buf, &STANDARD_TABLES.encode)
 }
 
 unsafe fn _encode_alternative_buf(num: u128, digits: usize, buf: &mut [u8]) -> usize {
-    encode_impl(num, digits, buf, &TABLES.alternative)
+    encode_impl(num, digits, buf, &ALTERNATIVE_TABLES.encode)
 }
 
 #[cfg(feature = "alloc")]
