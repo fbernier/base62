@@ -276,12 +276,17 @@ pub fn encode_io<T: Into<u128>, W: std::io::Write + ?Sized>(
 ) -> std::io::Result<()> {
     let num = num.into();
     let digits = digit_count(num);
-    let mut buf = [0u8; 22]; // Maximum possible size for u128
 
-    // SAFETY: We know buf is 22 bytes which is enough for any u128
+    let mut buf = core::mem::MaybeUninit::<[u8; 22]>::uninit();
+
     unsafe {
-        let len = _encode_buf(num, digits, &mut buf[..digits]);
-        w.write_all(&buf[..len])
+        let ptr = buf.as_mut_ptr() as *mut u8;
+        let slice = core::slice::from_raw_parts_mut(ptr, digits);
+
+        let len = _encode_buf(num, digits, slice);
+        debug_assert_eq!(len, digits);
+
+        w.write_all(&slice[..len])
     }
 }
 
@@ -304,12 +309,17 @@ pub fn encode_alternative_io<T: Into<u128>, W: std::io::Write + ?Sized>(
 ) -> std::io::Result<()> {
     let num = num.into();
     let digits = digit_count(num);
-    let mut buf = [0u8; 22]; // Maximum possible size for u128
 
-    // SAFETY: We know buf is 22 bytes which is enough for any u128
+    let mut buf = core::mem::MaybeUninit::<[u8; 22]>::uninit();
+
     unsafe {
-        let len = _encode_alternative_buf(num, digits, &mut buf[..digits]);
-        w.write_all(&buf[..len])
+        let ptr = buf.as_mut_ptr() as *mut u8;
+        let slice = core::slice::from_raw_parts_mut(ptr, digits);
+
+        let len = _encode_alternative_buf(num, digits, slice);
+        debug_assert_eq!(len, digits);
+
+        w.write_all(&slice[..len])
     }
 }
 
@@ -810,13 +820,18 @@ mod alloc_support {
     pub fn encode<T: Into<u128>>(num: T) -> String {
         let num = num.into();
         let digits = digit_count(num);
-        let mut buf = String::with_capacity(digits);
+
         unsafe {
-            buf.as_mut_vec().set_len(digits);
-            let len = _encode_buf(num, digits, buf.as_bytes_mut());
+            let mut buf = String::with_capacity(digits);
+            let ptr = buf.as_mut_vec().as_mut_ptr();
+            let slice = core::slice::from_raw_parts_mut(ptr, digits);
+
+            let len = _encode_buf(num, digits, slice);
             debug_assert_eq!(len, digits);
+
+            buf.as_mut_vec().set_len(digits);
+            buf
         }
-        buf
     }
 
     /// Encodes an unsigned integer into base62, using the standard digit ordering
@@ -836,11 +851,18 @@ mod alloc_support {
         let num = num.into();
         let digits = digit_count(num);
         let old_len = buf.len();
+
         buf.reserve(digits);
+
         unsafe {
-            buf.as_mut_vec().set_len(old_len + digits);
-            let len = _encode_buf(num, digits, &mut buf.as_bytes_mut()[old_len..]);
+            let vec = buf.as_mut_vec();
+            let ptr = vec.as_mut_ptr().add(old_len);
+            let slice = core::slice::from_raw_parts_mut(ptr, digits);
+
+            let len = _encode_buf(num, digits, slice);
             debug_assert_eq!(len, digits);
+
+            vec.set_len(old_len + digits);
         }
     }
 
@@ -860,13 +882,18 @@ mod alloc_support {
     pub fn encode_alternative<T: Into<u128>>(num: T) -> String {
         let num = num.into();
         let digits = digit_count(num);
-        let mut buf = String::with_capacity(digits);
+
         unsafe {
-            buf.as_mut_vec().set_len(digits);
-            let len = _encode_alternative_buf(num, digits, buf.as_bytes_mut());
+            let mut buf = String::with_capacity(digits);
+            let ptr = buf.as_mut_vec().as_mut_ptr();
+            let slice = core::slice::from_raw_parts_mut(ptr, digits);
+
+            let len = _encode_alternative_buf(num, digits, slice);
             debug_assert_eq!(len, digits);
+
+            buf.as_mut_vec().set_len(digits);
+            buf
         }
-        buf
     }
 
     /// Encodes an unsigned integer into base62, using the alternative digit ordering
@@ -886,11 +913,18 @@ mod alloc_support {
         let num = num.into();
         let digits = digit_count(num);
         let old_len = buf.len();
+
         buf.reserve(digits);
+
         unsafe {
-            buf.as_mut_vec().set_len(old_len + digits);
-            let len = _encode_alternative_buf(num, digits, &mut buf.as_bytes_mut()[old_len..]);
+            let vec = buf.as_mut_vec();
+            let ptr = vec.as_mut_ptr().add(old_len);
+            let slice = core::slice::from_raw_parts_mut(ptr, digits);
+
+            let len = _encode_alternative_buf(num, digits, slice);
             debug_assert_eq!(len, digits);
+
+            vec.set_len(old_len + digits);
         }
     }
 }
