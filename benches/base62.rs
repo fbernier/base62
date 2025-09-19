@@ -207,6 +207,98 @@ pub fn criterion_benchmark(c: &mut Criterion) {
         )
     });
 
+    #[cfg(feature = "std")]
+    {
+        group.bench_function("standard_io_fixed", |b| {
+            let mut buf = Vec::new();
+            b.iter(|| {
+                buf.clear();
+                base62::encode_io(black_box(u128::MAX), black_box(&mut buf))
+            })
+        });
+
+        group.bench_function("standard_io_random", |b| {
+            b.iter_batched_ref(
+                || {
+                    let num: u128 = rng().sample(StandardUniform);
+                    (num, Vec::with_capacity(22))
+                },
+                |(num, buf)| {
+                    buf.clear();
+                    base62::encode_io(black_box(*num), black_box(buf))
+                },
+                BatchSize::SmallInput,
+            )
+        });
+
+        group.bench_function("standard_io_random_u64", |b| {
+            b.iter_batched_ref(
+                || {
+                    let num: u64 = rng().sample(StandardUniform);
+                    (num, Vec::with_capacity(11))
+                },
+                |(num, buf)| {
+                    buf.clear();
+                    base62::encode_io(black_box(*num), black_box(buf))
+                },
+                BatchSize::SmallInput,
+            )
+        });
+
+        group.bench_function("alternative_io_fixed", |b| {
+            let mut buf = Vec::new();
+            b.iter(|| {
+                buf.clear();
+                base62::encode_alternative_io(black_box(u128::MAX), black_box(&mut buf))
+            })
+        });
+
+        group.bench_function("alternative_io_random", |b| {
+            b.iter_batched_ref(
+                || {
+                    let num: u128 = rng().sample(StandardUniform);
+                    (num, Vec::with_capacity(22))
+                },
+                |(num, buf)| {
+                    buf.clear();
+                    base62::encode_alternative_io(black_box(*num), black_box(buf))
+                },
+                BatchSize::SmallInput,
+            )
+        });
+
+        group.bench_function("alternative_io_random_u64", |b| {
+            b.iter_batched_ref(
+                || {
+                    let num: u64 = rng().sample(StandardUniform);
+                    (num, Vec::with_capacity(11))
+                },
+                |(num, buf)| {
+                    buf.clear();
+                    base62::encode_alternative_io(black_box(*num), black_box(buf))
+                },
+                BatchSize::SmallInput,
+            )
+        });
+
+        use std::io::BufWriter;
+
+        group.bench_function("standard_io_bufwriter_random", |b| {
+            b.iter_batched_ref(
+                || {
+                    let num: u128 = rng().sample(StandardUniform);
+                    let vec = Vec::with_capacity(22);
+                    (num, BufWriter::new(vec))
+                },
+                |(num, buf_writer)| {
+                    *buf_writer = BufWriter::new(Vec::with_capacity(22));
+                    base62::encode_io(black_box(*num), black_box(buf_writer))
+                },
+                BatchSize::SmallInput,
+            )
+        });
+    }
+
     group.finish();
 }
 
