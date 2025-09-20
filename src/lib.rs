@@ -572,20 +572,22 @@ pub fn decode_alternative<T: AsRef<[u8]>>(input: T) -> Result<u128, DecodeError>
 
 // Common encoding function
 unsafe fn encode_impl(num: u128, digits: usize, buf: &mut [u8], encode_table: &[u8; 62]) -> usize {
-    if let Ok(num) = TryInto::<u64>::try_into(num) {
-        encode_impl_u64(num, digits, buf, encode_table)
-    } else if digits > 20 {
-        encode_impl_over_20_digits(num, digits, buf, encode_table)
-    } else if digits == 20 {
-        //  (AAAAAAAAAA, BBBBBBBBBB)
-        let (first_u64, second_u64) = div_base_to_10(num);
-        // AAAAAAAAAA
-        let first_u64 = first_u64 as u64;
+    unsafe {
+        if let Ok(num) = TryInto::<u64>::try_into(num) {
+            encode_impl_u64(num, digits, buf, encode_table)
+        } else if digits > 20 {
+            encode_impl_over_20_digits(num, digits, buf, encode_table)
+        } else if digits == 20 {
+            //  (AAAAAAAAAA, BBBBBBBBBB)
+            let (first_u64, second_u64) = div_base_to_10(num);
+            // AAAAAAAAAA
+            let first_u64 = first_u64 as u64;
 
-        encode_impl_20_digits(first_u64, second_u64, buf, encode_table)
-    } else {
-        // digits between 11 and 20 (10 digits would always fit into a u64, which we checked first)
-        encode_impl_over_10_under_20_digits(num, digits, buf, encode_table)
+            encode_impl_20_digits(first_u64, second_u64, buf, encode_table)
+        } else {
+            // digits between 11 and 20 (10 digits would always fit into a u64, which we checked first)
+            encode_impl_over_10_under_20_digits(num, digits, buf, encode_table)
+        }
     }
 }
 
@@ -607,21 +609,27 @@ unsafe fn encode_impl_over_20_digits(
 
     // encode the first one or two digits
     if digits == 21 {
-        *buf.get_unchecked_mut(0) = *encode_table.get_unchecked(first_u64 as usize);
+        unsafe {
+            *buf.get_unchecked_mut(0) = *encode_table.get_unchecked(first_u64 as usize);
+        }
     } else {
         let second_digit = first_u64 % BASE;
         let first_digit = first_u64 / BASE;
-        *buf.get_unchecked_mut(1) = *encode_table.get_unchecked(second_digit as usize);
-        *buf.get_unchecked_mut(0) = *encode_table.get_unchecked(first_digit as usize);
+        unsafe {
+            *buf.get_unchecked_mut(1) = *encode_table.get_unchecked(second_digit as usize);
+            *buf.get_unchecked_mut(0) = *encode_table.get_unchecked(first_digit as usize);
+        }
     }
 
     // encode the last 20 digits
-    encode_impl_20_digits(
-        second_u64,
-        third_u64,
-        &mut buf[(digits - 20)..],
-        encode_table,
-    );
+    unsafe {
+        encode_impl_20_digits(
+            second_u64,
+            third_u64,
+            &mut buf[(digits - 20)..],
+            encode_table,
+        );
+    }
 
     digits
 }
@@ -650,8 +658,10 @@ unsafe fn encode_impl_20_digits(
                 let remainder = (*num - (BASE as u32) * quotient) as usize;
                 *num = quotient;
 
-                *buf.get_unchecked_mut(starting_write_idx - i - 1) =
-                    *encode_table.get_unchecked(remainder)
+                unsafe {
+                    *buf.get_unchecked_mut(starting_write_idx - i - 1) =
+                        *encode_table.get_unchecked(remainder)
+                }
             });
     }
 
@@ -678,7 +688,9 @@ unsafe fn encode_impl_over_10_under_20_digits(
         let remainder = num % BASE;
         num /= BASE;
 
-        *buf.get_unchecked_mut(write_idx) = *encode_table.get_unchecked(remainder as usize);
+        unsafe {
+            *buf.get_unchecked_mut(write_idx) = *encode_table.get_unchecked(remainder as usize);
+        }
 
         digit_index = digit_index.wrapping_add(1);
         if digit_index == 10 {
@@ -704,14 +716,16 @@ unsafe fn encode_impl_u64(
         // BBBBBBBBBB
         let second_u64 = num % (BASE_TO_10 as u64);
 
-        *buf.get_unchecked_mut(0) = *encode_table.get_unchecked(first_u64 as usize);
+        unsafe {
+            *buf.get_unchecked_mut(0) = *encode_table.get_unchecked(first_u64 as usize);
 
-        encode_impl_u64_10_digits(second_u64, &mut buf[1..], encode_table);
+            encode_impl_u64_10_digits(second_u64, &mut buf[1..], encode_table);
+        }
         digits
     } else if digits == 10 {
-        encode_impl_u64_10_digits(num, buf, encode_table)
+        unsafe { encode_impl_u64_10_digits(num, buf, encode_table) }
     } else {
-        encode_impl_u64_under_10_digits(num, digits, buf, encode_table)
+        unsafe { encode_impl_u64_under_10_digits(num, digits, buf, encode_table) }
     }
 }
 
@@ -730,7 +744,9 @@ unsafe fn encode_impl_u64_under_10_digits(
         let remainder = num % BASE;
         num /= BASE;
 
-        *buf.get_unchecked_mut(write_idx) = *encode_table.get_unchecked(remainder as usize);
+        unsafe {
+            *buf.get_unchecked_mut(write_idx) = *encode_table.get_unchecked(remainder as usize);
+        }
 
         digit_index = digit_index.wrapping_add(1);
     }
@@ -754,8 +770,10 @@ unsafe fn encode_impl_u64_10_digits(num: u64, buf: &mut [u8], encode_table: &[u8
                 let remainder = (*num - (BASE as u32) * quotient) as usize;
                 *num = quotient;
 
-                *buf.get_unchecked_mut(starting_write_idx - i - 1) =
-                    *encode_table.get_unchecked(remainder)
+                unsafe {
+                    *buf.get_unchecked_mut(starting_write_idx - i - 1) =
+                        *encode_table.get_unchecked(remainder)
+                }
             });
     }
 
@@ -790,11 +808,11 @@ const fn mulh(x: u128, y: u128) -> u128 {
 }
 
 unsafe fn _encode_buf(num: u128, digits: usize, buf: &mut [u8]) -> usize {
-    encode_impl(num, digits, buf, &STANDARD_TABLES.encode)
+    unsafe { encode_impl(num, digits, buf, &STANDARD_TABLES.encode) }
 }
 
 unsafe fn _encode_alternative_buf(num: u128, digits: usize, buf: &mut [u8]) -> usize {
-    encode_impl(num, digits, buf, &ALTERNATIVE_TABLES.encode)
+    unsafe { encode_impl(num, digits, buf, &ALTERNATIVE_TABLES.encode) }
 }
 
 #[cfg(feature = "alloc")]
