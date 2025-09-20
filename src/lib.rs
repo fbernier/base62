@@ -177,18 +177,16 @@ impl fmt::Display for DecodeError {
 }
 
 // For DecodeError
-#[rustversion::since(1.81)]
+#[cfg(not(feature = "std"))]
 impl core::error::Error for DecodeError {}
 
-#[rustversion::before(1.81)]
 #[cfg(feature = "std")]
 impl std::error::Error for DecodeError {}
 
 // For EncodeError
-#[rustversion::since(1.81)]
+#[cfg(not(feature = "std"))]
 impl core::error::Error for EncodeError {}
 
-#[rustversion::before(1.81)]
 #[cfg(feature = "std")]
 impl std::error::Error for EncodeError {}
 

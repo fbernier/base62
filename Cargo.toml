@@ -5,7 +5,7 @@ authors = [
     "François Bernier <frankbernier@gmail.com>",
     "Chai T. Rex <ChaiTRex@users.noreply.github.com>",
 ]
-edition = "2018"
+edition = "2021"
 description = "A Base62 encoding/decoding library"
 documentation = "https://docs.rs/base62/"
 homepage = "https://github.com/fbernier/base62"
@@ -23,7 +23,6 @@ alloc = []
 std = ["alloc"]
 
 [dependencies]
-rustversion = "1"
 
 [dev-dependencies]
 criterion = { version = "0.7", default-features = false }
