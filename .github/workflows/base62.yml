@@ -42,7 +42,9 @@ jobs:
         with:
           toolchain: ${{ matrix.rust }}
       - uses: Swatinem/rust-cache@v2
-      - uses: taiki-e/install-action@nextest
+      - uses: taiki-e/install-action@v2  # Updated to v2
+        with:
+          tool: nextest
       - name: Run tests (no_std)
         run: cargo nextest run --no-default-features
       - name: Run tests (default/alloc)
@@ -55,6 +57,29 @@ jobs:
         run: cargo test --doc
       - name: Run doc tests (std)
         run: cargo test --doc --features std
+
+  miri:
+    name: Miri
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Rust nightly and miri
+        uses: dtolnay/rust-toolchain@nightly
+        with:
+          components: miri
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: nextest
+      - name: Setup miri
+        run: cargo miri setup
+      - name: Run tests under miri with nextest (no_std)
+        run: cargo miri nextest run --no-default-features
+      - name: Run tests under miri with nextest (all features)
+        run: cargo miri nextest run --all-features
+      - name: Run doctests under miri (no_std)
+        run: cargo miri test --doc --no-default-features
+      - name: Run doctests under miri (all features)
+        run: cargo miri test --doc --all-features
 
   fmt:
     name: Rustfmt
