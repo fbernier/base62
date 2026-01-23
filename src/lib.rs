@@ -621,26 +621,24 @@ unsafe fn encode_impl_over_20_digits(
     buf: &mut [u8],
     encode_pairs: &[[u8; 2]; BASE_TO_2 as usize],
 ) -> usize {
-    // input: AABBBBBBBBBBCCCCCCCCCC
+    // input: [A]BCCCCCCCCCCDDDDDDDDDD
     //
-    //  (AABBBBBBBBBB, CCCCCCCCCC)
+    //  ([A]BCCCCCCCCCC, DDDDDDDDDD)
     let (num, third_u64) = div_base_to_10(num);
-    //  (AA, BBBBBBBBBB)
+    //  ([A]B, CCCCCCCCCC)
     let (first_u64, second_u64) = div_base_to_10(num);
-    //   AA - no more than two digits as num was 22 digits
+    //   [A]B - no more than two digits as num was 22 digits
     let first_u64 = first_u64 as u64;
 
-    // encode the first one or two digits
-    if digits == 21 {
-        unsafe {
-            *buf.get_unchecked_mut(0) = encode_pairs.get_unchecked(first_u64 as usize)[1];
-        }
-    } else {
-        unsafe {
-            let [c1, c2] = *encode_pairs.get_unchecked(first_u64 as usize);
-            *buf.get_unchecked_mut(0) = c1;
-            *buf.get_unchecked_mut(1) = c2;
-        }
+    // Branchless 21/22 digit handling of [A]B
+    // For 21 digits: write 0 then overwrite with B at position 0
+    // For 22 digits: write A at position 0, B at position 1
+    unsafe {
+        // [A, B] in 22 digit case or [0, B] in 21 digit case
+        let [c1, c2] = *encode_pairs.get_unchecked(first_u64 as usize);
+        let is_22 = digits - 21; // 0 or 1
+        *buf.get_unchecked_mut(0) = c1;
+        *buf.get_unchecked_mut(is_22) = c2;
     }
 
     // encode the last 20 digits
@@ -745,22 +743,21 @@ unsafe fn encode_impl_u64(
     buf: &mut [u8],
     encode_pairs: &[[u8; 2]; BASE_TO_2 as usize],
 ) -> usize {
-    if digits == 11 {
-        // ABBBBBBBBBB
-
-        // A
-        let first_u64 = num / (BASE_TO_10 as u64);
-        // BBBBBBBBBB
-        let second_u64 = num % (BASE_TO_10 as u64);
+    if digits >= 10 {
+        // Branchless 10/11 digit handling
+        // For 10 digits:  BBBBBBBBBB -> first_digit=0, remainder=BBBBBBBBBB, offset=0 (buf[0] gets overwritten)
+        // For 11 digits: ABBBBBBBBBB -> first_digit=A, remainder=BBBBBBBBBB, offset=1
+        let first_digit = num / (BASE_TO_10 as u64);
+        let remainder = num % (BASE_TO_10 as u64);
+        let offset = digits - 10; // 0 or 1
 
         unsafe {
-            *buf.get_unchecked_mut(0) = encode_pairs.get_unchecked(first_u64 as usize)[1];
+            // This is unnecessary work for the 10 digit case, but its very cheap work and allows us to avoid a branch
+            *buf.get_unchecked_mut(0) = encode_pairs.get_unchecked(first_digit as usize)[1];
 
-            encode_impl_u64_10_digits(second_u64, &mut buf[1..], encode_pairs);
+            encode_impl_u64_10_digits(remainder, &mut buf[offset..], encode_pairs);
         }
         digits
-    } else if digits == 10 {
-        unsafe { encode_impl_u64_10_digits(num, buf, encode_pairs) }
     } else {
         unsafe { encode_impl_u64_under_10_digits(num, digits, buf, encode_pairs) }
     }
