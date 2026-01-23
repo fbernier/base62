@@ -814,7 +814,7 @@ unsafe fn encode_impl_u64_10_digits(
 
     for pair_idx in 0..2 {
         nums.iter_mut().zip(BASE_POSITIONS).for_each(|(num, base)| {
-            // pair_idx 0: ABC, FGJ
+            // pair_idx 0: ABC, FGH
             // pair_idx 1: A, F
             let quotient = *num / BASE_TO_2 as u32;
             // pair_idx 0: DE, IJ
