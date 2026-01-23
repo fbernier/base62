@@ -51,15 +51,13 @@ const BASE_TO_21: u128 = BASE_TO_20 * BASE as u128;
 const DIV_BASE_TO_10_MULTIPLY: u128 = 233718071534448225491982379416108680074;
 const DIV_BASE_TO_10_SHIFT: u8 = 59;
 
-#[repr(align(64))]
 struct StandardTables {
-    encode: [u8; 62],
+    encode_pairs: [[u8; 2]; BASE_TO_2 as usize],
     decode: [u8; 128],
 }
 
-#[repr(align(64))]
 struct AlternativeTables {
-    encode: [u8; 62],
+    encode_pairs: [[u8; 2]; BASE_TO_2 as usize],
     decode: [u8; 128],
 }
 
@@ -73,6 +71,16 @@ impl StandardTables {
             b'g', b'h', b'i', b'j', b'k', b'l', b'm', b'n', b'o', b'p', b'q', b'r', b's', b't',
             b'u', b'v', b'w', b'x', b'y', b'z',
         ];
+
+        // Generate pair table: index i represents (i / 62, i % 62)
+        let mut encode_pairs = [[0u8; 2]; BASE_TO_2 as usize];
+        let mut i = 0usize;
+        while i < BASE_TO_2 as usize {
+            let hi = i / 62;
+            let lo = i % 62;
+            encode_pairs[i] = [ENCODE[hi], ENCODE[lo]];
+            i += 1;
+        }
 
         let mut decode = [255u8; 128];
 
@@ -94,7 +102,7 @@ impl StandardTables {
         }
 
         Self {
-            encode: ENCODE,
+            encode_pairs,
             decode,
         }
     }
@@ -110,6 +118,16 @@ impl AlternativeTables {
             b'G', b'H', b'I', b'J', b'K', b'L', b'M', b'N', b'O', b'P', b'Q', b'R', b'S', b'T',
             b'U', b'V', b'W', b'X', b'Y', b'Z',
         ];
+
+        // Generate pair table: index i represents (i / 62, i % 62)
+        let mut encode_pairs = [[0u8; 2]; BASE_TO_2 as usize];
+        let mut i = 0usize;
+        while i < BASE_TO_2 as usize {
+            let hi = i / 62;
+            let lo = i % 62;
+            encode_pairs[i] = [ENCODE[hi], ENCODE[lo]];
+            i += 1;
+        }
 
         let mut decode = [255u8; 128];
 
@@ -131,7 +149,7 @@ impl AlternativeTables {
         }
 
         Self {
-            encode: ENCODE,
+            encode_pairs,
             decode,
         }
     }
@@ -571,22 +589,27 @@ pub fn decode_alternative<T: AsRef<[u8]>>(input: T) -> Result<u128, DecodeError>
 }
 
 // Common encoding function
-unsafe fn encode_impl(num: u128, digits: usize, buf: &mut [u8], encode_table: &[u8; 62]) -> usize {
+unsafe fn encode_impl(
+    num: u128,
+    digits: usize,
+    buf: &mut [u8],
+    encode_pairs: &[[u8; 2]; BASE_TO_2 as usize],
+) -> usize {
     unsafe {
         if let Ok(num) = TryInto::<u64>::try_into(num) {
-            encode_impl_u64(num, digits, buf, encode_table)
+            encode_impl_u64(num, digits, buf, encode_pairs)
         } else if digits > 20 {
-            encode_impl_over_20_digits(num, digits, buf, encode_table)
+            encode_impl_over_20_digits(num, digits, buf, encode_pairs)
         } else if digits == 20 {
             //  (AAAAAAAAAA, BBBBBBBBBB)
             let (first_u64, second_u64) = div_base_to_10(num);
             // AAAAAAAAAA
             let first_u64 = first_u64 as u64;
 
-            encode_impl_20_digits(first_u64, second_u64, buf, encode_table)
+            encode_impl_20_digits(first_u64, second_u64, buf, encode_pairs)
         } else {
             // digits between 11 and 20 (10 digits would always fit into a u64, which we checked first)
-            encode_impl_over_10_under_20_digits(num, digits, buf, encode_table)
+            encode_impl_over_10_under_20_digits(num, digits, buf, encode_pairs)
         }
     }
 }
@@ -596,7 +619,7 @@ unsafe fn encode_impl_over_20_digits(
     num: u128,
     digits: usize,
     buf: &mut [u8],
-    encode_table: &[u8; 62],
+    encode_pairs: &[[u8; 2]; BASE_TO_2 as usize],
 ) -> usize {
     // input: AABBBBBBBBBBCCCCCCCCCC
     //
@@ -610,14 +633,13 @@ unsafe fn encode_impl_over_20_digits(
     // encode the first one or two digits
     if digits == 21 {
         unsafe {
-            *buf.get_unchecked_mut(0) = *encode_table.get_unchecked(first_u64 as usize);
+            *buf.get_unchecked_mut(0) = encode_pairs.get_unchecked(first_u64 as usize)[1];
         }
     } else {
-        let second_digit = first_u64 % BASE;
-        let first_digit = first_u64 / BASE;
         unsafe {
-            *buf.get_unchecked_mut(1) = *encode_table.get_unchecked(second_digit as usize);
-            *buf.get_unchecked_mut(0) = *encode_table.get_unchecked(first_digit as usize);
+            let [c1, c2] = *encode_pairs.get_unchecked(first_u64 as usize);
+            *buf.get_unchecked_mut(0) = c1;
+            *buf.get_unchecked_mut(1) = c2;
         }
     }
 
@@ -627,7 +649,7 @@ unsafe fn encode_impl_over_20_digits(
             second_u64,
             third_u64,
             &mut buf[(digits - 20)..],
-            encode_table,
+            encode_pairs,
         );
     }
 
@@ -639,31 +661,46 @@ unsafe fn encode_impl_20_digits(
     first_u64: u64,
     second_u64: u64,
     buf: &mut [u8],
-    encode_table: &[u8; 62],
+    encode_pairs: &[[u8; 2]; BASE_TO_2 as usize],
 ) -> usize {
     let first_u32 = (first_u64 / BASE_TO_5) as u32;
     let second_u32 = (first_u64 % BASE_TO_5) as u32;
     let third_u32 = (second_u64 / BASE_TO_5) as u32;
     let fourth_u32 = (second_u64 % BASE_TO_5) as u32;
 
-    // [AAAAA, BBBBB, CCCCC, DDDDD]
+    // [ABCDE, FGHIJ, KLMNO, PQRST]
     let mut nums = [first_u32, second_u32, third_u32, fourth_u32];
-    const STARTING_WRITE_IDXS: [usize; 4] = [5, 10, 15, 20];
+    const BASE_POSITIONS: [usize; 4] = [0, 5, 10, 15];
 
-    for i in 0..5 {
-        nums.iter_mut()
-            .zip(STARTING_WRITE_IDXS)
-            .for_each(|(num, starting_write_idx)| {
-                let quotient = num.wrapping_div(BASE as u32);
-                let remainder = (*num - (BASE as u32) * quotient) as usize;
-                *num = quotient;
+    for pair_idx in 0..2 {
+        nums.iter_mut().zip(BASE_POSITIONS).for_each(|(num, base)| {
+            // pair_idx 0: ABC, FGH, KLM, PQR
+            // pair_idx 1: A, F, K, P
+            let quotient = *num / BASE_TO_2 as u32;
+            // pair_idx 0: DE, IJ, NO, ST
+            // pair_idx 1: BC, GH, LM, QR
+            let pair = (*num - BASE_TO_2 as u32 * quotient) as usize;
+            *num = quotient;
 
-                unsafe {
-                    *buf.get_unchecked_mut(starting_write_idx - i - 1) =
-                        *encode_table.get_unchecked(remainder)
-                }
-            });
+            // Write positions: base+3,base+4 for pair_idx=0; base+1,base+2 for pair_idx=1
+            let pos = base + 4 - 2 * pair_idx;
+            unsafe {
+                // pair_idx 0: [D, E], [I, J], [N, O], [S, T]
+                // pair_idx 1: [B, C], [G, H], [L, M], [Q, R]
+                let [c1, c2] = *encode_pairs.get_unchecked(pair);
+                *buf.get_unchecked_mut(pos - 1) = c1;
+                *buf.get_unchecked_mut(pos) = c2;
+            }
+        });
     }
+
+    // A, F, K, P
+    nums.iter()
+        .zip(BASE_POSITIONS)
+        .for_each(|(num, base)| unsafe {
+            // num is now a single digit (0-61), use first byte of pair table
+            *buf.get_unchecked_mut(base) = encode_pairs.get_unchecked(*num as usize)[1];
+        });
 
     20
 }
@@ -673,7 +710,7 @@ unsafe fn encode_impl_over_10_under_20_digits(
     num: u128,
     digits: usize,
     buf: &mut [u8],
-    encode_table: &[u8; 62],
+    encode_pairs: &[[u8; 2]; BASE_TO_2 as usize],
 ) -> usize {
     let mut write_idx = digits;
     let mut digit_index = 0_usize;
@@ -689,7 +726,7 @@ unsafe fn encode_impl_over_10_under_20_digits(
         num /= BASE;
 
         unsafe {
-            *buf.get_unchecked_mut(write_idx) = *encode_table.get_unchecked(remainder as usize);
+            *buf.get_unchecked_mut(write_idx) = encode_pairs.get_unchecked(remainder as usize)[1];
         }
 
         digit_index = digit_index.wrapping_add(1);
@@ -706,7 +743,7 @@ unsafe fn encode_impl_u64(
     num: u64,
     digits: usize,
     buf: &mut [u8],
-    encode_table: &[u8; 62],
+    encode_pairs: &[[u8; 2]; BASE_TO_2 as usize],
 ) -> usize {
     if digits == 11 {
         // ABBBBBBBBBB
@@ -717,15 +754,15 @@ unsafe fn encode_impl_u64(
         let second_u64 = num % (BASE_TO_10 as u64);
 
         unsafe {
-            *buf.get_unchecked_mut(0) = *encode_table.get_unchecked(first_u64 as usize);
+            *buf.get_unchecked_mut(0) = encode_pairs.get_unchecked(first_u64 as usize)[1];
 
-            encode_impl_u64_10_digits(second_u64, &mut buf[1..], encode_table);
+            encode_impl_u64_10_digits(second_u64, &mut buf[1..], encode_pairs);
         }
         digits
     } else if digits == 10 {
-        unsafe { encode_impl_u64_10_digits(num, buf, encode_table) }
+        unsafe { encode_impl_u64_10_digits(num, buf, encode_pairs) }
     } else {
-        unsafe { encode_impl_u64_under_10_digits(num, digits, buf, encode_table) }
+        unsafe { encode_impl_u64_under_10_digits(num, digits, buf, encode_pairs) }
     }
 }
 
@@ -733,7 +770,7 @@ unsafe fn encode_impl_u64_under_10_digits(
     mut num: u64,
     digits: usize,
     buf: &mut [u8],
-    encode_table: &[u8; 62],
+    encode_pairs: &[[u8; 2]; BASE_TO_2 as usize],
 ) -> usize {
     let mut write_idx = digits;
     let mut digit_index = 0_usize;
@@ -745,7 +782,7 @@ unsafe fn encode_impl_u64_under_10_digits(
         num /= BASE;
 
         unsafe {
-            *buf.get_unchecked_mut(write_idx) = *encode_table.get_unchecked(remainder as usize);
+            *buf.get_unchecked_mut(write_idx) = encode_pairs.get_unchecked(remainder as usize)[1];
         }
 
         digit_index = digit_index.wrapping_add(1);
@@ -754,28 +791,47 @@ unsafe fn encode_impl_u64_under_10_digits(
     digits
 }
 
-unsafe fn encode_impl_u64_10_digits(num: u64, buf: &mut [u8], encode_table: &[u8; 62]) -> usize {
+unsafe fn encode_impl_u64_10_digits(
+    num: u64,
+    buf: &mut [u8],
+    encode_pairs: &[[u8; 2]; BASE_TO_2 as usize],
+) -> usize {
     let first_u32 = (num / BASE_TO_5) as u32;
     let second_u32 = (num % BASE_TO_5) as u32;
 
-    // [AAAAA, BBBBB]
+    // [ABCDE, FGHIJ]
     let mut nums = [first_u32, second_u32];
-    const STARTING_WRITE_IDXS: [usize; 2] = [5, 10];
+    const BASE_POSITIONS: [usize; 2] = [0, 5];
 
-    for i in 0..5 {
-        nums.iter_mut()
-            .zip(STARTING_WRITE_IDXS)
-            .for_each(|(num, starting_write_idx)| {
-                let quotient = num.wrapping_div(BASE as u32);
-                let remainder = (*num - (BASE as u32) * quotient) as usize;
-                *num = quotient;
+    for pair_idx in 0..2 {
+        nums.iter_mut().zip(BASE_POSITIONS).for_each(|(num, base)| {
+            // pair_idx 0: ABC, FGJ
+            // pair_idx 1: A, F
+            let quotient = *num / BASE_TO_2 as u32;
+            // pair_idx 0: DE, IJ
+            // pair_idx 1: BC, GH
+            let pair = (*num - BASE_TO_2 as u32 * quotient) as usize;
+            *num = quotient;
 
-                unsafe {
-                    *buf.get_unchecked_mut(starting_write_idx - i - 1) =
-                        *encode_table.get_unchecked(remainder)
-                }
-            });
+            // Write positions: base+3,base+4 for pair_idx=0; base+1,base+2 for pair_idx=1
+            let pos = base + 4 - 2 * pair_idx;
+            unsafe {
+                // pair_idx 0: [D, E], [I, J]
+                // pair_idx 1: [B, C], [G, H]
+                let [c1, c2] = *encode_pairs.get_unchecked(pair);
+                *buf.get_unchecked_mut(pos - 1) = c1;
+                *buf.get_unchecked_mut(pos) = c2;
+            }
+        });
     }
+
+    // A, F
+    nums.iter()
+        .zip(BASE_POSITIONS)
+        .for_each(|(num, base)| unsafe {
+            // num is now a single digit (0-61), use second byte of pair entry (the low digit)
+            *buf.get_unchecked_mut(base) = encode_pairs.get_unchecked(*num as usize)[1];
+        });
 
     10
 }
@@ -808,11 +864,11 @@ const fn mulh(x: u128, y: u128) -> u128 {
 }
 
 unsafe fn _encode_buf(num: u128, digits: usize, buf: &mut [u8]) -> usize {
-    unsafe { encode_impl(num, digits, buf, &STANDARD_TABLES.encode) }
+    unsafe { encode_impl(num, digits, buf, &STANDARD_TABLES.encode_pairs) }
 }
 
 unsafe fn _encode_alternative_buf(num: u128, digits: usize, buf: &mut [u8]) -> usize {
-    unsafe { encode_impl(num, digits, buf, &ALTERNATIVE_TABLES.encode) }
+    unsafe { encode_impl(num, digits, buf, &ALTERNATIVE_TABLES.encode_pairs) }
 }
 
 #[cfg(feature = "alloc")]
