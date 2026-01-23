@@ -97,7 +97,14 @@ pub fn criterion_benchmark(c: &mut Criterion) {
     });
 
     group.bench_function("standard_buf_fixed", |b| {
-        b.iter(|| encode_buf(black_box(u128::MAX), black_box(&mut String::new())))
+        b.iter_batched_ref(
+            || String::with_capacity(22),
+            |buf| {
+                buf.clear();
+                encode_buf(black_box(u128::MAX), black_box(buf))
+            },
+            BatchSize::SmallInput,
+        )
     });
 
     group.bench_function("standard_buf_random", |b| {
@@ -176,7 +183,14 @@ pub fn criterion_benchmark(c: &mut Criterion) {
     });
 
     group.bench_function("alternative_buf_fixed", |b| {
-        b.iter(|| encode_alternative_buf(black_box(u128::MAX), black_box(&mut String::new())))
+        b.iter_batched_ref(
+            || String::with_capacity(22),
+            |buf| {
+                buf.clear();
+                encode_alternative_buf(black_box(u128::MAX), black_box(buf))
+            },
+            BatchSize::SmallInput,
+        )
     });
 
     group.bench_function("alternative_buf_random", |b| {
