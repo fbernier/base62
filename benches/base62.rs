@@ -12,20 +12,14 @@ use rand::{rng, Rng};
 pub fn criterion_benchmark(c: &mut Criterion) {
     let mut group = c.benchmark_group("decode");
 
-    // Fixed input benchmark
     group.bench_function("standard_fixed", |b| {
         b.iter(|| decode(black_box("7n42DGM5Tflk9n8mt7Fhc7")))
     });
 
-    // Random input benchmark using iter_batched for setup
     group.bench_function("standard_random", |b| {
         b.iter_batched(
-            || {
-                // Setup (runs outside measured time)
-                let random_num: u128 = rng().sample(StandardUniform);
-                encode(random_num)
-            },
-            decode, // Measured function
+            || encode(rng().sample::<u128, _>(StandardUniform)),
+            decode,
             BatchSize::SmallInput,
         )
     });
@@ -36,11 +30,7 @@ pub fn criterion_benchmark(c: &mut Criterion) {
 
     group.bench_function("alternative_random", |b| {
         b.iter_batched(
-            || {
-                // Setup (runs outside measured time)
-                let random_num: u128 = rng().sample(StandardUniform);
-                encode_alternative(random_num)
-            },
+            || encode_alternative(rng().sample::<u128, _>(StandardUniform)),
             decode_alternative,
             BatchSize::SmallInput,
         )
@@ -301,8 +291,7 @@ pub fn criterion_benchmark(c: &mut Criterion) {
             b.iter_batched_ref(
                 || {
                     let num: u128 = rng().sample(StandardUniform);
-                    let vec = Vec::with_capacity(22);
-                    (num, BufWriter::new(vec))
+                    (num, BufWriter::new(Vec::with_capacity(22)))
                 },
                 |(num, buf_writer)| {
                     *buf_writer = BufWriter::new(Vec::with_capacity(22));

@@ -211,7 +211,9 @@ impl std::error::Error for EncodeError {}
 impl fmt::Display for EncodeError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            EncodeError::BufferTooSmall => write!(f, "Buffer too small to encode the number"),
+            EncodeError::BufferTooSmall => {
+                f.write_str("Buffer too small to encode the number")
+            }
         }
     }
 }
@@ -636,22 +638,16 @@ unsafe fn encode_impl(
     buf: &mut [u8],
     encode_pairs: &[[u8; 2]; BASE_TO_2 as usize],
 ) -> usize {
-    unsafe {
-        if let Ok(num) = TryInto::<u64>::try_into(num) {
-            encode_impl_u64(num, digits, buf, encode_pairs)
-        } else if digits > 20 {
-            encode_impl_over_20_digits(num, digits, buf, encode_pairs)
-        } else if digits == 20 {
-            //  (AAAAAAAAAA, BBBBBBBBBB)
-            let (first_u64, second_u64) = div_base_to_10(num);
-            // AAAAAAAAAA
-            let first_u64 = first_u64 as u64;
-
-            encode_impl_20_digits(first_u64, second_u64, buf, encode_pairs)
-        } else {
-            // digits between 11 and 20 (10 digits would always fit into a u64, which we checked first)
-            encode_impl_over_10_under_20_digits(num, digits, buf, encode_pairs)
-        }
+    if let Ok(num) = TryInto::<u64>::try_into(num) {
+        unsafe { encode_impl_u64(num, digits, buf, encode_pairs) }
+    } else if digits > 20 {
+        unsafe { encode_impl_over_20_digits(num, digits, buf, encode_pairs) }
+    } else if digits == 20 {
+        let (first_u64, second_u64) = div_base_to_10(num);
+        let first_u64 = first_u64 as u64;
+        unsafe { encode_impl_20_digits(first_u64, second_u64, buf, encode_pairs) }
+    } else {
+        unsafe { encode_impl_over_10_under_20_digits(num, digits, buf, encode_pairs) }
     }
 }
 
@@ -675,15 +671,11 @@ unsafe fn encode_impl_over_20_digits(
     // For 21 digits: write 0 then overwrite with B at position 0
     // For 22 digits: write A at position 0, B at position 1
     unsafe {
-        // [A, B] in 22 digit case or [0, B] in 21 digit case
         let [c1, c2] = *encode_pairs.get_unchecked(first_u64 as usize);
         let is_22 = digits - 21; // 0 or 1
         *buf.get_unchecked_mut(0) = c1;
         *buf.get_unchecked_mut(is_22) = c2;
-    }
 
-    // encode the last 20 digits
-    unsafe {
         encode_impl_20_digits(
             second_u64,
             third_u64,
@@ -737,7 +729,6 @@ unsafe fn encode_impl_20_digits(
     nums.iter()
         .zip(BASE_POSITIONS)
         .for_each(|(num, base)| unsafe {
-            // num is now a single digit (0-61), use first byte of pair table
             *buf.get_unchecked_mut(base) = encode_pairs.get_unchecked(*num as usize)[1];
         });
 
@@ -778,10 +769,9 @@ unsafe fn encode_impl_u64(
         let remainder = num % (BASE_TO_10 as u64);
         let offset = digits - 10; // 0 or 1
 
+        // Unnecessary work for 10 digits, but very cheap and avoids a branch
         unsafe {
-            // This is unnecessary work for the 10 digit case, but its very cheap work and allows us to avoid a branch
             *buf.get_unchecked_mut(0) = encode_pairs.get_unchecked(first_digit as usize)[1];
-
             encode_impl_u64_10_digits(remainder, &mut buf[offset..], encode_pairs);
         }
         digits
@@ -912,7 +902,6 @@ unsafe fn encode_impl_u64_10_digits(
     nums.iter()
         .zip(BASE_POSITIONS)
         .for_each(|(num, base)| unsafe {
-            // num is now a single digit (0-61), use second byte of pair entry (the low digit)
             *buf.get_unchecked_mut(base) = encode_pairs.get_unchecked(*num as usize)[1];
         });
 
