@@ -384,31 +384,40 @@ pub(crate) fn digit_count(n: u128) -> usize {
     estimate + bump
 }
 
+/// Decode a chunk of up to 10 bytes, returning the accumulated value
+/// and an error sentinel. Bit 7 of the sentinel is set if any byte was invalid.
+/// Error checking is deferred to the caller, avoiding per-character branches.
 #[inline(always)]
-fn decode_char(
-    result: &mut u64,
-    ch: u8,
-    i: usize,
-    decode_table: &[u8; 128],
-) -> Result<(), DecodeError> {
-    if ch < 128 {
-        let char_value = decode_table[ch as usize];
+fn decode_chunk(input: &[u8], decode_table: &[u8; 128]) -> (u64, u8) {
+    let mut result = 0_u64;
+    let mut error_sentinel = 0_u8;
 
-        // avoid branching
-        let is_valid = (char_value != 255) as u64;
-        *result = result
-            .wrapping_mul(BASE)
-            .wrapping_add((char_value as u64) * is_valid);
-
-        if char_value == 255 {
-            Err(DecodeError::InvalidBase62Byte(ch, i))
+    let mut i = 0;
+    while i < input.len() {
+        let ch = input[i];
+        let char_value = if ch < 128 {
+            decode_table[ch as usize]
         } else {
-            Ok(())
-        }
-    } else {
-        // non-ASCII character - always invalid
-        Err(DecodeError::InvalidBase62Byte(ch, i))
+            255
+        };
+        error_sentinel |= char_value;
+        result = result.wrapping_mul(BASE).wrapping_add(char_value as u64);
+        i += 1;
     }
+
+    (result, error_sentinel)
+}
+
+/// Cold path: find the first invalid byte in a chunk and return the error.
+#[cold]
+#[inline(never)]
+fn find_decode_error(input: &[u8], base_index: usize, decode_table: &[u8; 128]) -> DecodeError {
+    for (i, &ch) in input.iter().enumerate() {
+        if ch >= 128 || decode_table[ch as usize] == 255 {
+            return DecodeError::InvalidBase62Byte(ch, base_index + i);
+        }
+    }
+    unreachable!()
 }
 
 // Common decoding function
@@ -452,28 +461,48 @@ fn decode_impl(mut input: &[u8], decode_table: &[u8; 128]) -> Result<u128, Decod
 
         let (a_power, b_power) = MULTIPLIERS[input_len];
 
-        let mut iter = (chopped_count..).zip(input.iter().copied());
-
-        // process first 10 characters
-        let mut result_a = 0_u64;
-        for (i, ch) in iter.by_ref().take(10) {
-            decode_char(&mut result_a, ch, i, decode_table)?;
+        // Chunk A: first min(10, input_len) characters
+        let a_end = input_len.min(10);
+        let (result_a, sentinel_a) = decode_chunk(&input[..a_end], decode_table);
+        if sentinel_a & 0x80 != 0 {
+            return Err(find_decode_error(
+                &input[..a_end],
+                chopped_count,
+                decode_table,
+            ));
         }
         let result_a = (result_a as u128)
             .checked_mul(a_power)
             .ok_or(DecodeError::ArithmeticOverflow)?;
 
-        // process next 10 characters
-        let mut result_b = 0_u64;
-        for (i, ch) in iter.by_ref().take(10) {
-            decode_char(&mut result_b, ch, i, decode_table)?;
+        // Chunk B: next min(10, remaining) characters
+        let b_end = input_len.min(20);
+        let (result_b, sentinel_b) = if a_end < b_end {
+            decode_chunk(&input[a_end..b_end], decode_table)
+        } else {
+            (0, 0)
+        };
+        if sentinel_b & 0x80 != 0 {
+            return Err(find_decode_error(
+                &input[a_end..b_end],
+                chopped_count + a_end,
+                decode_table,
+            ));
         }
         let result_b = (result_b as u128).wrapping_mul(b_power as u128);
 
-        // process remaining characters
-        let mut result_c = 0_u64;
-        for (i, ch) in iter {
-            decode_char(&mut result_c, ch, i, decode_table)?;
+        // Chunk C: remaining characters (0-2)
+        let (result_c, sentinel_c) = if b_end < input_len {
+            decode_chunk(&input[b_end..], decode_table)
+        } else {
+            (0, 0)
+        };
+        if sentinel_c & 0x80 != 0 {
+            return Err(find_decode_error(
+                &input[b_end..],
+                chopped_count + b_end,
+                decode_table,
+            ));
         }
         let result_c = result_c as u128;
 
@@ -715,34 +744,20 @@ unsafe fn encode_impl_20_digits(
     20
 }
 
-// 10-20 digit implementation needs only one u128 division, then a u64 division per digit
+// 11-19 digit implementation needs only one u128 division, then reuses u64 encoders
 unsafe fn encode_impl_over_10_under_20_digits(
     num: u128,
     digits: usize,
     buf: &mut [u8],
     encode_pairs: &[[u8; 2]; BASE_TO_2 as usize],
 ) -> usize {
-    let mut write_idx = digits;
-    let mut digit_index = 0_usize;
+    let (high, low) = div_base_to_10(num);
+    let high = high as u64;
+    let high_digits = digits - 10;
 
-    let (first_u64, mut num) = div_base_to_10(num);
-    // as this number is <20 digits, once we remove the rightmost 10 digits, the remainder is a u64.
-    let first_u64 = first_u64 as u64;
-
-    while digit_index < digits {
-        write_idx = write_idx.wrapping_sub(1);
-
-        let remainder = num % BASE;
-        num /= BASE;
-
-        unsafe {
-            *buf.get_unchecked_mut(write_idx) = encode_pairs.get_unchecked(remainder as usize)[1];
-        }
-
-        digit_index = digit_index.wrapping_add(1);
-        if digit_index == 10 {
-            num = first_u64
-        }
+    unsafe {
+        encode_impl_u64_10_digits(low, &mut buf[high_digits..], encode_pairs);
+        encode_impl_u64_under_10_digits(high, high_digits, buf, encode_pairs);
     }
 
     digits
@@ -776,28 +791,87 @@ unsafe fn encode_impl_u64(
 }
 
 unsafe fn encode_impl_u64_under_10_digits(
-    mut num: u64,
+    num: u64,
     digits: usize,
     buf: &mut [u8],
     encode_pairs: &[[u8; 2]; BASE_TO_2 as usize],
 ) -> usize {
-    let mut write_idx = digits;
-    let mut digit_index = 0_usize;
-
-    while digit_index < digits {
-        write_idx = write_idx.wrapping_sub(1);
-
-        let remainder = num % BASE;
-        num /= BASE;
+    if digits >= 5 {
+        let high = (num / BASE_TO_5) as u32;
+        let low = (num % BASE_TO_5) as u32;
+        let high_digits = digits - 5;
 
         unsafe {
-            *buf.get_unchecked_mut(write_idx) = encode_pairs.get_unchecked(remainder as usize)[1];
+            encode_5_digits(low, &mut buf[high_digits..], encode_pairs);
+            encode_1_to_4_digits(high, high_digits, buf, encode_pairs);
         }
-
-        digit_index = digit_index.wrapping_add(1);
+    } else {
+        unsafe { encode_1_to_4_digits(num as u32, digits, buf, encode_pairs) };
     }
 
     digits
+}
+
+/// Encode exactly 5 base62 digits from a u32 < BASE_TO_5 into buf[0..5].
+#[inline(always)]
+unsafe fn encode_5_digits(num: u32, buf: &mut [u8], encode_pairs: &[[u8; 2]; BASE_TO_2 as usize]) {
+    // num = A * 62^4 + B * 62^3 + C * 62^2 + D * 62 + E
+    let abc = num / BASE_TO_2 as u32;
+    let pair_de = (num - BASE_TO_2 as u32 * abc) as usize;
+
+    let a = abc / BASE_TO_2 as u32;
+    let pair_bc = (abc - BASE_TO_2 as u32 * a) as usize;
+
+    unsafe {
+        let [c1, c2] = *encode_pairs.get_unchecked(pair_de);
+        *buf.get_unchecked_mut(3) = c1;
+        *buf.get_unchecked_mut(4) = c2;
+
+        let [c1, c2] = *encode_pairs.get_unchecked(pair_bc);
+        *buf.get_unchecked_mut(1) = c1;
+        *buf.get_unchecked_mut(2) = c2;
+
+        *buf.get_unchecked_mut(0) = encode_pairs.get_unchecked(a as usize)[1];
+    }
+}
+
+/// Encode 0-4 base62 digits from a u32 into buf[0..digits].
+#[inline(always)]
+unsafe fn encode_1_to_4_digits(
+    num: u32,
+    digits: usize,
+    buf: &mut [u8],
+    encode_pairs: &[[u8; 2]; BASE_TO_2 as usize],
+) {
+    if digits >= 3 {
+        let high = num / BASE_TO_2 as u32;
+        let low = (num - BASE_TO_2 as u32 * high) as usize;
+
+        unsafe {
+            let [c1, c2] = *encode_pairs.get_unchecked(low);
+            *buf.get_unchecked_mut(digits - 2) = c1;
+            *buf.get_unchecked_mut(digits - 1) = c2;
+
+            if digits == 4 {
+                let [c1, c2] = *encode_pairs.get_unchecked(high as usize);
+                *buf.get_unchecked_mut(0) = c1;
+                *buf.get_unchecked_mut(1) = c2;
+            } else {
+                *buf.get_unchecked_mut(0) = encode_pairs.get_unchecked(high as usize)[1];
+            }
+        }
+    } else if digits == 2 {
+        unsafe {
+            let [c1, c2] = *encode_pairs.get_unchecked(num as usize);
+            *buf.get_unchecked_mut(0) = c1;
+            *buf.get_unchecked_mut(1) = c2;
+        }
+    } else if digits == 1 {
+        unsafe {
+            *buf.get_unchecked_mut(0) = encode_pairs.get_unchecked(num as usize)[1];
+        }
+    }
+    // digits == 0: no-op (e.g. exactly 5/10/20 digit numbers)
 }
 
 unsafe fn encode_impl_u64_10_digits(
