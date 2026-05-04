@@ -7,7 +7,7 @@ use std::hint::black_box;
 
 use criterion::{criterion_group, criterion_main, BatchSize, Criterion};
 use rand::distr::StandardUniform;
-use rand::{rng, Rng};
+use rand::{rng, RngExt};
 
 pub fn criterion_benchmark(c: &mut Criterion) {
     let mut group = c.benchmark_group("decode");

@@ -25,9 +25,9 @@ std = ["alloc"]
 [dependencies]
 
 [dev-dependencies]
-criterion = { version = "0.7", default-features = false }
+criterion = { version = "0.8", default-features = false }
 quickcheck = "1"
-rand = "0.9"
+rand = "0.10"
 
 [[bench]]
 name = "base62"
