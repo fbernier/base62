@@ -51,112 +51,36 @@ const BASE_TO_21: u128 = BASE_TO_20 * BASE as u128;
 const DIV_BASE_TO_10_MULTIPLY: u128 = 233718071534448225491982379416108680074;
 const DIV_BASE_TO_10_SHIFT: u8 = 59;
 
-struct StandardTables {
-    encode_pairs: [[u8; 2]; BASE_TO_2 as usize],
-    decode: [u8; 128],
-}
+const STANDARD_ALPHABET: &[u8; 62] =
+    b"0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz";
+const ALTERNATIVE_ALPHABET: &[u8; 62] =
+    b"0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ";
 
-struct AlternativeTables {
-    encode_pairs: [[u8; 2]; BASE_TO_2 as usize],
-    decode: [u8; 128],
-}
-
-impl StandardTables {
-    const fn new() -> Self {
-        // Standard encoding table (0-9A-Za-z)
-        const ENCODE: [u8; 62] = [
-            b'0', b'1', b'2', b'3', b'4', b'5', b'6', b'7', b'8', b'9', b'A', b'B', b'C', b'D',
-            b'E', b'F', b'G', b'H', b'I', b'J', b'K', b'L', b'M', b'N', b'O', b'P', b'Q', b'R',
-            b'S', b'T', b'U', b'V', b'W', b'X', b'Y', b'Z', b'a', b'b', b'c', b'd', b'e', b'f',
-            b'g', b'h', b'i', b'j', b'k', b'l', b'm', b'n', b'o', b'p', b'q', b'r', b's', b't',
-            b'u', b'v', b'w', b'x', b'y', b'z',
-        ];
-
-        // Generate pair table: index i represents (i / 62, i % 62)
-        let mut encode_pairs = [[0u8; 2]; BASE_TO_2 as usize];
-        let mut i = 0usize;
-        while i < BASE_TO_2 as usize {
-            let hi = i / 62;
-            let lo = i % 62;
-            encode_pairs[i] = [ENCODE[hi], ENCODE[lo]];
-            i += 1;
-        }
-
-        let mut decode = [255u8; 128];
-
-        // Populate decode table
-        let mut i = 0u8;
-        while i < 10 {
-            decode[(b'0' + i) as usize] = i;
-            i += 1;
-        }
-        let mut i = 0u8;
-        while i < 26 {
-            decode[(b'A' + i) as usize] = i + 10;
-            i += 1;
-        }
-        let mut i = 0u8;
-        while i < 26 {
-            decode[(b'a' + i) as usize] = i + 36;
-            i += 1;
-        }
-
-        Self {
-            encode_pairs,
-            decode,
-        }
+const fn encode_pairs(alphabet: &[u8; 62]) -> [[u8; 2]; BASE_TO_2 as usize] {
+    let mut pairs = [[0; 2]; BASE_TO_2 as usize];
+    let mut i = 0;
+    while i < pairs.len() {
+        pairs[i] = [alphabet[i / 62], alphabet[i % 62]];
+        i += 1;
     }
+    pairs
 }
 
-impl AlternativeTables {
-    const fn new() -> Self {
-        // Alternative encoding table (0-9a-zA-Z)
-        const ENCODE: [u8; 62] = [
-            b'0', b'1', b'2', b'3', b'4', b'5', b'6', b'7', b'8', b'9', b'a', b'b', b'c', b'd',
-            b'e', b'f', b'g', b'h', b'i', b'j', b'k', b'l', b'm', b'n', b'o', b'p', b'q', b'r',
-            b's', b't', b'u', b'v', b'w', b'x', b'y', b'z', b'A', b'B', b'C', b'D', b'E', b'F',
-            b'G', b'H', b'I', b'J', b'K', b'L', b'M', b'N', b'O', b'P', b'Q', b'R', b'S', b'T',
-            b'U', b'V', b'W', b'X', b'Y', b'Z',
-        ];
-
-        // Generate pair table: index i represents (i / 62, i % 62)
-        let mut encode_pairs = [[0u8; 2]; BASE_TO_2 as usize];
-        let mut i = 0usize;
-        while i < BASE_TO_2 as usize {
-            let hi = i / 62;
-            let lo = i % 62;
-            encode_pairs[i] = [ENCODE[hi], ENCODE[lo]];
-            i += 1;
-        }
-
-        let mut decode = [255u8; 128];
-
-        // Populate decode table
-        let mut i = 0u8;
-        while i < 10 {
-            decode[(b'0' + i) as usize] = i;
-            i += 1;
-        }
-        let mut i = 0u8;
-        while i < 26 {
-            decode[(b'a' + i) as usize] = i + 10;
-            i += 1;
-        }
-        let mut i = 0u8;
-        while i < 26 {
-            decode[(b'A' + i) as usize] = i + 36;
-            i += 1;
-        }
-
-        Self {
-            encode_pairs,
-            decode,
-        }
+const fn decode_table(alphabet: &[u8; 62]) -> [u8; 256] {
+    let mut table = [255; 256];
+    let mut i = 0;
+    while i < alphabet.len() {
+        table[alphabet[i] as usize] = i as u8;
+        i += 1;
     }
+    table
 }
 
-static STANDARD_TABLES: StandardTables = StandardTables::new();
-static ALTERNATIVE_TABLES: AlternativeTables = AlternativeTables::new();
+// Keep directions separate so decode-only users do not retain the pair tables.
+static STANDARD_ENCODE_PAIRS: [[u8; 2]; BASE_TO_2 as usize] = encode_pairs(STANDARD_ALPHABET);
+static ALTERNATIVE_ENCODE_PAIRS: [[u8; 2]; BASE_TO_2 as usize] = encode_pairs(ALTERNATIVE_ALPHABET);
+static STANDARD_DECODE: [u8; 256] = decode_table(STANDARD_ALPHABET);
+static ALTERNATIVE_DECODE: [u8; 256] = decode_table(ALTERNATIVE_ALPHABET);
 
 /// Indicates the cause of a decoding failure in base62 decoding operations.
 #[derive(Copy, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
@@ -389,31 +313,24 @@ fn decode_char(
     result: &mut u64,
     ch: u8,
     i: usize,
-    decode_table: &[u8; 128],
+    decode_table: &[u8; 256],
 ) -> Result<(), DecodeError> {
-    if ch < 128 {
-        let char_value = decode_table[ch as usize];
+    let char_value = decode_table[ch as usize];
 
-        // avoid branching
-        let is_valid = (char_value != 255) as u64;
-        *result = result
-            .wrapping_mul(BASE)
-            .wrapping_add((char_value as u64) * is_valid);
+    // Each chunk has at most 10 digits, so valid values stay below 62^10 < 2^60.
+    // An invalid digit's partial result is discarded by the caller.
+    *result = result.wrapping_mul(BASE).wrapping_add(char_value as u64);
 
-        if char_value == 255 {
-            Err(DecodeError::InvalidBase62Byte(ch, i))
-        } else {
-            Ok(())
-        }
-    } else {
-        // non-ASCII character - always invalid
+    if char_value == 255 {
         Err(DecodeError::InvalidBase62Byte(ch, i))
+    } else {
+        Ok(())
     }
 }
 
 // Common decoding function
 #[inline]
-fn decode_impl(mut input: &[u8], decode_table: &[u8; 128]) -> Result<u128, DecodeError> {
+fn decode_impl(mut input: &[u8], decode_table: &[u8; 256]) -> Result<u128, DecodeError> {
     if input.is_empty() {
         return Err(DecodeError::EmptyInput);
     }
@@ -424,34 +341,6 @@ fn decode_impl(mut input: &[u8], decode_table: &[u8; 128]) -> Result<u128, Decod
 
     let input_len = input.len();
     if input_len <= 22 {
-        const MULTIPLIERS: [(u128, u64); 23] = [
-            (0, 0),
-            (1, 1),
-            (1, 1),
-            (1, 1),
-            (1, 1),
-            (1, 1),
-            (1, 1),
-            (1, 1),
-            (1, 1),
-            (1, 1),
-            (1, 1),
-            (BASE as u128, 1),
-            (BASE_TO_2 as u128, 1),
-            (BASE_TO_3 as u128, 1),
-            (BASE_TO_4 as u128, 1),
-            (BASE_TO_5 as u128, 1),
-            (BASE_TO_6 as u128, 1),
-            (BASE_TO_7 as u128, 1),
-            (BASE_TO_8 as u128, 1),
-            (BASE_TO_9 as u128, 1),
-            (BASE_TO_10, 1),
-            (BASE_TO_11, BASE),
-            (BASE_TO_12, BASE_TO_2),
-        ];
-
-        let (a_power, b_power) = MULTIPLIERS[input_len];
-
         let mut iter = (chopped_count..).zip(input.iter().copied());
 
         // process first 10 characters
@@ -459,6 +348,35 @@ fn decode_impl(mut input: &[u8], decode_table: &[u8; 128]) -> Result<u128, Decod
         for (i, ch) in iter.by_ref().take(10) {
             decode_char(&mut result_a, ch, i, decode_table)?;
         }
+        if input_len <= 10 {
+            return Ok(result_a as u128);
+        }
+
+        // For lengths 11..=20 this is the first chunk's power. For lengths
+        // 21..=22 it is the second chunk's power, with another 62^10 for the first.
+        const MULTIPLIERS: [u64; 12] = [
+            BASE,
+            BASE_TO_2,
+            BASE_TO_3,
+            BASE_TO_4,
+            BASE_TO_5,
+            BASE_TO_6,
+            BASE_TO_7,
+            BASE_TO_8,
+            BASE_TO_9,
+            BASE_TO_10 as u64,
+            BASE,
+            BASE_TO_2,
+        ];
+        let power = MULTIPLIERS[input_len - 11];
+        let (a_power, b_power) = if input_len <= 20 {
+            (power as u128, 1)
+        } else {
+            (BASE_TO_10 * power as u128, power)
+        };
+
+        // Preserve overflow precedence: validate the first chunk, check its
+        // weighted value, then validate the remaining chunks before adding.
         let result_a = (result_a as u128)
             .checked_mul(a_power)
             .ok_or(DecodeError::ArithmeticOverflow)?;
@@ -578,7 +496,7 @@ pub fn encode_alternative_bytes<T: Into<u128>>(
 /// assert_eq!(value, 189876682536016);
 /// ```
 pub fn decode<T: AsRef<[u8]>>(input: T) -> Result<u128, DecodeError> {
-    decode_impl(input.as_ref(), &STANDARD_TABLES.decode)
+    decode_impl(input.as_ref(), &STANDARD_DECODE)
 }
 
 /// Decodes a base62 byte slice or an equivalent, like a `String`,
@@ -597,10 +515,11 @@ pub fn decode<T: AsRef<[u8]>>(input: T) -> Result<u128, DecodeError> {
 /// assert_eq!(value, 96813686712946);
 /// ```
 pub fn decode_alternative<T: AsRef<[u8]>>(input: T) -> Result<u128, DecodeError> {
-    decode_impl(input.as_ref(), &ALTERNATIVE_TABLES.decode)
+    decode_impl(input.as_ref(), &ALTERNATIVE_DECODE)
 }
 
 // Common encoding function
+#[inline]
 unsafe fn encode_impl(
     num: u128,
     digits: usize,
@@ -626,7 +545,7 @@ unsafe fn encode_impl(
     }
 }
 
-// >20 digits requires two u128 divisions
+// >20 digits requires one u128 division; the second quotient fits after shifting.
 unsafe fn encode_impl_over_20_digits(
     num: u128,
     digits: usize,
@@ -638,15 +557,20 @@ unsafe fn encode_impl_over_20_digits(
     //  ([A]BCCCCCCCCCC, DDDDDDDDDD)
     let (num, third_u64) = div_base_to_10(num);
     //  ([A]B, CCCCCCCCCC)
-    let (first_u64, second_u64) = div_base_to_10(num);
-    //   [A]B - no more than two digits as num was 22 digits
-    let first_u64 = first_u64 as u64;
+    // num <= u128::MAX / 62^10 = 405436225450834078300 (69 bits).
+    // Since 62^10 = 2^10 * 31^10, shifting both operands by 10 preserves
+    // the quotient, and num >> 10 fits in 59 bits.
+    let first_u64 = (num >> 10) as u64 / (BASE_TO_10 >> 10) as u64;
+    let second_u64 = (num - first_u64 as u128 * BASE_TO_10) as u64;
+    // first_u64 <= 483, and second_u64 < 62^10 < 2^64.
 
     // Branchless 21/22 digit handling of [A]B
     // For 21 digits: write 0 then overwrite with B at position 0
     // For 22 digits: write A at position 0, B at position 1
     unsafe {
         // [A, B] in 22 digit case or [0, B] in 21 digit case
+        // SAFETY: first_u64 < BASE_TO_2, digits is 21 or 22, and buf has
+        // at least digits bytes, so both leading output positions exist.
         let [c1, c2] = *encode_pairs.get_unchecked(first_u64 as usize);
         let is_22 = digits - 21; // 0 or 1
         *buf.get_unchecked_mut(0) = c1;
@@ -715,34 +639,27 @@ unsafe fn encode_impl_20_digits(
     20
 }
 
-// 10-20 digit implementation needs only one u128 division, then a u64 division per digit
+// 11-19 digits: split once, then encode a short prefix and a fixed-width suffix.
 unsafe fn encode_impl_over_10_under_20_digits(
     num: u128,
     digits: usize,
     buf: &mut [u8],
     encode_pairs: &[[u8; 2]; BASE_TO_2 as usize],
 ) -> usize {
-    let mut write_idx = digits;
-    let mut digit_index = 0_usize;
+    let (prefix, suffix) = div_base_to_10(num);
+    let prefix_digits = digits - 10;
 
-    let (first_u64, mut num) = div_base_to_10(num);
-    // as this number is <20 digits, once we remove the rightmost 10 digits, the remainder is a u64.
-    let first_u64 = first_u64 as u64;
-
-    while digit_index < digits {
-        write_idx = write_idx.wrapping_sub(1);
-
-        let remainder = num % BASE;
-        num /= BASE;
-
-        unsafe {
-            *buf.get_unchecked_mut(write_idx) = encode_pairs.get_unchecked(remainder as usize)[1];
-        }
-
-        digit_index = digit_index.wrapping_add(1);
-        if digit_index == 10 {
-            num = first_u64
-        }
+    unsafe {
+        // SAFETY: digits is 11..=19, so prefix has 1..=9 digits and fits in
+        // u64. buf has at least digits bytes, and suffix < BASE_TO_10;
+        // the fixed-width helper preserves any leading zeroes in the suffix.
+        encode_impl_u64_under_10_digits(
+            prefix as u64,
+            prefix_digits,
+            &mut buf[..prefix_digits],
+            encode_pairs,
+        );
+        encode_impl_u64_10_digits(suffix, &mut buf[prefix_digits..], encode_pairs);
     }
 
     digits
@@ -775,26 +692,49 @@ unsafe fn encode_impl_u64(
     }
 }
 
+/// Encodes one to nine digits, including any leading zeroes requested by `digits`.
+///
+/// # Safety
+///
+/// - `digits` must be in `1..=9`.
+/// - `num` must be less than `62^digits`.
+/// - `buf.len()` must be at least `digits`.
 unsafe fn encode_impl_u64_under_10_digits(
     mut num: u64,
     digits: usize,
     buf: &mut [u8],
     encode_pairs: &[[u8; 2]; BASE_TO_2 as usize],
 ) -> usize {
+    debug_assert!((1..=9).contains(&digits));
+    debug_assert!(num < BASE.pow(digits as u32));
+    debug_assert!(buf.len() >= digits);
+
     let mut write_idx = digits;
-    let mut digit_index = 0_usize;
 
-    while digit_index < digits {
-        write_idx = write_idx.wrapping_sub(1);
-
-        let remainder = num % BASE;
-        num /= BASE;
+    while write_idx > 2 {
+        let quotient = num / BASE_TO_2;
+        let pair = (num - quotient * BASE_TO_2) as usize;
+        num = quotient;
+        write_idx -= 2;
 
         unsafe {
-            *buf.get_unchecked_mut(write_idx) = encode_pairs.get_unchecked(remainder as usize)[1];
+            // SAFETY: pair is a remainder below BASE_TO_2. The loop starts
+            // with at least three unwritten digits, so these two positions
+            // are within buf[..digits] and leave at least one leading digit.
+            let [c1, c2] = *encode_pairs.get_unchecked(pair);
+            *buf.get_unchecked_mut(write_idx) = c1;
+            *buf.get_unchecked_mut(write_idx + 1) = c2;
         }
+    }
 
-        digit_index = digit_index.wrapping_add(1);
+    unsafe {
+        // SAFETY: digits >= 1 and the loop leaves write_idx in 1..=2.
+        // The caller's num < BASE^digits bound is preserved as num < BASE^write_idx
+        // by each division by BASE^2, so the final table index is below BASE_TO_2.
+        // buf.len() >= digits covers both stores; for one digit, c2 overwrites c1.
+        let [c1, c2] = *encode_pairs.get_unchecked(num as usize);
+        *buf.get_unchecked_mut(0) = c1;
+        *buf.get_unchecked_mut(write_idx - 1) = c2;
     }
 
     digits
@@ -872,12 +812,14 @@ const fn mulh(x: u128, y: u128) -> u128 {
     x_high.wrapping_mul(y_high) + w1 + k
 }
 
+#[inline]
 unsafe fn _encode_buf(num: u128, digits: usize, buf: &mut [u8]) -> usize {
-    unsafe { encode_impl(num, digits, buf, &STANDARD_TABLES.encode_pairs) }
+    unsafe { encode_impl(num, digits, buf, &STANDARD_ENCODE_PAIRS) }
 }
 
+#[inline]
 unsafe fn _encode_alternative_buf(num: u128, digits: usize, buf: &mut [u8]) -> usize {
-    unsafe { encode_impl(num, digits, buf, &ALTERNATIVE_TABLES.encode_pairs) }
+    unsafe { encode_impl(num, digits, buf, &ALTERNATIVE_ENCODE_PAIRS) }
 }
 
 #[cfg(feature = "alloc")]
@@ -1170,6 +1112,115 @@ mod tests {
     fn test_decode_overflow() {
         let long_input = [b'1'; 23];
         assert_eq!(decode(long_input), Err(DecodeError::ArithmeticOverflow));
+    }
+
+    #[test]
+    fn test_encode_exact_and_short_buffers() {
+        for alternative in [false, true] {
+            let alphabet = if alternative {
+                b"0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ"
+            } else {
+                b"0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz"
+            };
+            let encoder = if alternative {
+                encode_alternative_bytes::<u128>
+            } else {
+                encode_bytes::<u128>
+            };
+            for boundary in (0..=21).map(|p| 62_u128.pow(p)).chain([
+                u64::MAX as u128,
+                u64::MAX as u128 + 1,
+                u128::MAX - 1,
+            ]) {
+                for num in [boundary - 1, boundary, boundary + 1] {
+                    // Independent digit-at-a-time reference, including zero.
+                    let mut expected = [0; 22];
+                    let mut start = expected.len();
+                    let mut remaining = num;
+                    loop {
+                        start -= 1;
+                        expected[start] = alphabet[(remaining % 62) as usize];
+                        remaining /= 62;
+                        if remaining == 0 {
+                            break;
+                        }
+                    }
+                    let expected = &expected[start..];
+                    for capacity in [expected.len() - 1, expected.len(), 22] {
+                        let mut buf = [0xa5; 24];
+                        let result = encoder(num, &mut buf[1..1 + capacity]);
+                        if capacity < expected.len() {
+                            assert_eq!(result, Err(EncodeError::BufferTooSmall));
+                            assert_eq!(buf, [0xa5; 24]);
+                        } else {
+                            assert_eq!(result, Ok(expected.len()));
+                            assert_eq!(&buf[1..1 + expected.len()], expected);
+                            assert_eq!(buf[0], 0xa5);
+                            assert!(buf[1 + expected.len()..].iter().all(|&ch| ch == 0xa5));
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn test_decode_invalid_bytes_and_overflow_precedence() {
+        let decoders: [fn(&[u8]) -> _; 2] =
+            [|input| decode(input), |input| decode_alternative(input)];
+        for decoder in decoders {
+            for byte in 0..=255_u8 {
+                if byte.is_ascii_alphanumeric() {
+                    continue;
+                }
+                // Exercise chunk boundaries and indexes after leading zeroes.
+                for index in [0, 1, 9, 10, 19, 20, 21] {
+                    let mut input = [b'0'; 24];
+                    input[2] = b'1';
+                    input[2 + index] = byte;
+                    assert_eq!(
+                        decoder(&input),
+                        Err(DecodeError::InvalidBase62Byte(byte, 2 + index))
+                    );
+                }
+            }
+
+            // Length overflow precedes validation; first-chunk validation
+            // precedes weighted overflow, which precedes later validation.
+            let mut input = [b'0'; 23];
+            input[0] = b'!';
+            assert_eq!(
+                decoder(&input[..22]),
+                Err(DecodeError::InvalidBase62Byte(b'!', 0))
+            );
+            assert_eq!(decoder(&input), Err(DecodeError::ArithmeticOverflow));
+            assert_eq!(
+                decoder(b"zzzzzzzzz!000000000000"),
+                Err(DecodeError::InvalidBase62Byte(b'!', 9))
+            );
+            assert_eq!(
+                decoder(b"zzzzzzzzzz!00000000000"),
+                Err(DecodeError::ArithmeticOverflow)
+            );
+        }
+        // The first weighted chunk fits, so a later invalid byte still wins
+        // over overflow from the final addition.
+        assert_eq!(
+            decode(b"7n42DGM5Tflk9n8mt7Fhc!"),
+            Err(DecodeError::InvalidBase62Byte(b'!', 21))
+        );
+        assert_eq!(
+            decode(b"7n42DGM5Tflk9n8mt7Fhc8"),
+            Err(DecodeError::ArithmeticOverflow)
+        );
+        assert_eq!(
+            decode_alternative(b"7N42dgm5tFLK9N8MT7fHC!"),
+            Err(DecodeError::InvalidBase62Byte(b'!', 21))
+        );
+        assert_eq!(
+            decode_alternative(b"7N42dgm5tFLK9N8MT7fHC8"),
+            Err(DecodeError::ArithmeticOverflow)
+        );
     }
 
     #[test]
@@ -1538,15 +1589,6 @@ mod tests {
             output.clear();
             encode_alternative_io(u64::MAX as u128 + 1, &mut output).unwrap();
             assert_eq!(output, b"lYGhA16ahyg");
-        }
-
-        #[test]
-        fn test_encode_bytes_buffer_too_small() {
-            let mut buf = [0; 1];
-            assert_eq!(
-                encode_bytes(1337_u16, &mut buf),
-                Err(EncodeError::BufferTooSmall)
-            );
         }
     }
 }

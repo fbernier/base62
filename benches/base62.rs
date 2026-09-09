@@ -5,9 +5,9 @@ use base62::{
 
 use std::hint::black_box;
 
-use criterion::{criterion_group, criterion_main, BatchSize, Criterion};
+use criterion::{criterion_group, criterion_main, BatchSize, BenchmarkId, Criterion, Throughput};
 use rand::distr::StandardUniform;
-use rand::{rng, RngExt};
+use rand::{rng, rngs::StdRng, RngExt, SeedableRng};
 
 pub fn criterion_benchmark(c: &mut Criterion) {
     let mut group = c.benchmark_group("decode");
@@ -316,5 +316,82 @@ pub fn criterion_benchmark(c: &mut Criterion) {
     group.finish();
 }
 
-criterion_group!(benches, criterion_benchmark);
+// Precompute identical corpora for both alphabets and every run. No allocation,
+// random-number generation, or String destruction is included in these timings.
+fn benchmark_by_digits<const ALTERNATIVE: bool>(c: &mut Criterion) {
+    const INPUTS: usize = 128;
+    let mut rng = StdRng::seed_from_u64(0x626173653632);
+    let mut group = c.benchmark_group(if ALTERNATIVE {
+        "by_digits/alternative"
+    } else {
+        "by_digits/standard"
+    });
+    group.throughput(Throughput::Elements(INPUTS as u64));
+
+    // Zero selects a shuffled mix of lengths, exposing branch-prediction costs.
+    for digits in 0..=22_u32 {
+        let inputs: [(u128, [u8; 22], usize); INPUTS] = core::array::from_fn(|_| {
+            let width = if digits == 0 {
+                rng.random_range(1..=22)
+            } else {
+                digits
+            };
+            let low = if width == 1 {
+                0
+            } else {
+                62_u128.pow(width - 1)
+            };
+            let high = 62_u128
+                .checked_pow(width)
+                .map_or(u128::MAX, |power| power - 1);
+            let num = rng.random_range(low..=high);
+            let mut buf = [0; 22];
+            let len = if ALTERNATIVE {
+                encode_alternative_bytes(num, &mut buf)
+            } else {
+                encode_bytes(num, &mut buf)
+            }
+            .unwrap();
+            (num, buf, len)
+        });
+        let label = if digits == 0 {
+            "mixed".to_owned()
+        } else {
+            digits.to_string()
+        };
+        group.bench_with_input(BenchmarkId::new("encode", &label), &inputs, |b, inputs| {
+            let mut buf = [0; 22];
+            b.iter(|| {
+                for &(num, _, _) in inputs {
+                    let result = if ALTERNATIVE {
+                        encode_alternative_bytes(black_box(num), black_box(&mut buf))
+                    } else {
+                        encode_bytes(black_box(num), black_box(&mut buf))
+                    };
+                    black_box(result).unwrap();
+                }
+            });
+        });
+        group.bench_with_input(BenchmarkId::new("decode", &label), &inputs, |b, inputs| {
+            b.iter(|| {
+                for (_, buf, len) in inputs {
+                    let result = if ALTERNATIVE {
+                        decode_alternative(black_box(&buf[..*len]))
+                    } else {
+                        decode(black_box(&buf[..*len]))
+                    };
+                    black_box(result).unwrap();
+                }
+            });
+        });
+    }
+    group.finish();
+}
+
+criterion_group!(
+    benches,
+    criterion_benchmark,
+    benchmark_by_digits::<false>,
+    benchmark_by_digits::<true>
+);
 criterion_main!(benches);

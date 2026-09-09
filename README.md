@@ -67,6 +67,32 @@ The library is optimized for both encoding and decoding performance:
 - Zero-copy decoding
 - Efficient buffer management
 - Direct string manipulation for optimal performance when appending
+- Pair-at-a-time encoding, with fixed-width chunks for larger integers
+- Byte-indexed decoding tables and a short-input path without wide arithmetic
+- Separate encoding and decoding tables, so decode-only binaries can discard encoding tables
+
+### Comparing performance
+
+The `by_digits` Criterion group measures both alphabets at every width from 1 to
+22 digits, plus mixed-length inputs. Each iteration processes 128 seeded,
+precomputed inputs. Criterion reports time per 128-value batch and throughput in
+values per second; divide the batch time by 128 to obtain time per value.
+Random-number generation, allocation, and input destruction are outside these
+core-operation timings.
+Both runs must use identical corpus generation; regenerate baselines whenever
+benchmark inputs change.
+
+Record a baseline before changing the implementation, then compare against it:
+
+```sh
+cargo +stable bench --bench base62 -- by_digits --save-baseline before
+# After changing the implementation:
+cargo +stable bench --bench base62 -- by_digits --baseline before
+```
+
+Use the same compiler, build flags, and CPU affinity for both runs, without other
+CPU-intensive jobs. On Linux, `taskset -c <cpu>` pins the command to one logical CPU.
+The existing `encode` and `decode` groups also cover allocation and fixed inputs.
 
 ## License
 
